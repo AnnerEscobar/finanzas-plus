@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/anner/AppData/Roaming/Claude/local-agent-mode-sessions/skills-plugin/9c8bc46c-8669-40ff-b7ea-bec3e76877f4/05f3fbcf-1300-4a4c-87ef-cf4f479f5ca5/skills/docx/**)",
+      "Bash(python scripts/office/unpack.py \"C:\\\\Users\\\\anner\\\\Downloads\\\\requerimientos_app_finanzas_personales.docx\" unpacked/)",
+      "Bash(pandoc \"C:\\\\Users\\\\anner\\\\Downloads\\\\requerimientos_app_finanzas_personales.docx\" -t plain)",
+      "Bash(cd /tmp)",
+      "Bash(unzip -q \"C:\\\\Users\\\\anner\\\\Downloads\\\\requerimientos_app_finanzas_personales.docx\" -d docx_content)",
+      "Bash(sed -n 's/.*<w:t>\\\\\\(.*\\\\\\)<\\\\/w:t>.*/\\\\1/p' docx_content/word/document.xml)",
+      "Bash(unzip -qo \"C:\\\\Users\\\\anner\\\\Downloads\\\\requerimientos_app_finanzas_personales.docx\" -d docx_content)",
+      "Bash(grep -v '^$')",
+      "Bash(git init *)",
+      "Bash(git config *)",
+      "Bash(mkdir -p \"C:\\\\Users\\\\anner\\\\Desktop\\\\PROYECTOS PERSONALES\\\\finanzas-plus\\\\apps\\\\backend\\\\src\\\\{common,modules\\\\/{auth,users,accounts,movements,creditCards,debts,funds,reports,closures,notifications},config}\")",
+      "Bash(mkdir -p \"C:\\\\Users\\\\anner\\\\Desktop\\\\PROYECTOS PERSONALES\\\\finanzas-plus\\\\apps\\\\backend\\\\{test,dist}\")",
+      "Bash(mkdir -p \"C:\\\\Users\\\\anner\\\\Desktop\\\\PROYECTOS PERSONALES\\\\finanzas-plus\\\\apps\\\\frontend\\\\src\\\\app\\\\{core,shared,modules\\\\/{dashboard,accounts,movements,creditCards,debts,funds,reports,debtPlan}}\")",
+      "Bash(mkdir -p \"C:\\\\Users\\\\anner\\\\Desktop\\\\PROYECTOS PERSONALES\\\\finanzas-plus\\\\apps\\\\frontend\\\\{public,dist}\")",
+      "Bash(git add *)",
+      "Bash(git commit -m 'Initial project structure: frontend \\(Angular\\) and backend \\(NestJS\\) *)"
+    ]
+  }
+}

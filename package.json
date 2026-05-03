@@ -1,0 +1,16 @@
+{
+  "name": "finanzas-plus",
+  "version": "0.1.0",
+  "description": "Aplicación de gestión de finanzas personales y plan deuda cero",
+  "private": true,
+  "workspaces": [
+    "apps/frontend",
+    "apps/backend"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=apps/frontend & npm run dev --workspace=apps/backend",
+    "build": "npm run build --workspace=apps/frontend && npm run build --workspace=apps/backend",
+    "test": "npm test --workspaces",
+    "lint": "npm run lint --workspaces"
+  }
+}
