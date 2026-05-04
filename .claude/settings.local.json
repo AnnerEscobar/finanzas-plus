@@ -21,7 +21,8 @@
       "Bash(npm run *)",
       "Bash(git commit -m 'Install dependencies and configure .env files for development *)",
       "Bash(docker --version)",
-      "Bash(docker run *)"
+      "Bash(docker run *)",
+      "Bash(git commit -m 'Sprint 1: Backend implementation - Accounts, Movements, Categories *)"
     ]
   }
 }

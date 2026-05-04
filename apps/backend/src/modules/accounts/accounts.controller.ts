@@ -7,28 +7,61 @@ import { AccountsService } from './accounts.service';
 export class AccountsController {
   constructor(private accountsService: AccountsService) {}
 
+  /**
+   * POST /accounts
+   * Crear una nueva cuenta
+   * Body: { alias, institution?, type?, currentBalanceCents? }
+   */
   @Post()
-  create(@Body() accountData: any, @Req() req: any) {
+  async create(@Body() accountData: any, @Req() req: any) {
     return this.accountsService.create(req.user.userId, accountData);
   }
 
+  /**
+   * GET /accounts
+   * Listar todas las cuentas activas del usuario
+   */
   @Get()
-  findByUser(@Req() req: any) {
-    return this.accountsService.findByUserId(req.user.userId);
+  async findByUser(@Req() req: any) {
+    const accounts = await this.accountsService.findByUserId(req.user.userId);
+    const totalBalance = await this.accountsService.getTotalBalance(req.user.userId);
+
+    return {
+      accounts,
+      totalBalance,
+      totalBalanceFormatted: `Q${(totalBalance / 100).toFixed(2)}`,
+    };
   }
 
-  @Get('total')
-  getTotalBalance(@Req() req: any) {
-    return this.accountsService.getTotalBalance(req.user.userId);
+  /**
+   * GET /accounts/total
+   * Obtener el saldo total disponible (RB-01)
+   */
+  @Get('balance/total')
+  async getTotalBalance(@Req() req: any) {
+    const totalCents = await this.accountsService.getTotalBalance(req.user.userId);
+
+    return {
+      totalCents,
+      totalFormatted: `Q${(totalCents / 100).toFixed(2)}`,
+    };
   }
 
+  /**
+   * GET /accounts/:id
+   * Obtener detalles de una cuenta específica
+   */
   @Get(':id')
-  findById(@Param('id') id: string) {
+  async findById(@Param('id') id: string) {
     return this.accountsService.findById(id);
   }
 
+  /**
+   * PUT /accounts/:id
+   * Actualizar una cuenta
+   */
   @Put(':id')
-  update(@Param('id') id: string, @Body() updateData: any) {
+  async update(@Param('id') id: string, @Body() updateData: any) {
     return this.accountsService.update(id, updateData);
   }
 }
