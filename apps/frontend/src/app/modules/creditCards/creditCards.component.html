@@ -1,0 +1,223 @@
+<div class="p-6 bg-gray-50 min-h-screen">
+  <!-- Header -->
+  <div class="flex justify-between items-center mb-6">
+    <h1 class="text-3xl font-bold text-gray-900">Tarjetas de Crédito</h1>
+    <button
+      (click)="openAddCardDialog()"
+      class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition"
+    >
+      + Nueva Tarjeta
+    </button>
+  </div>
+
+  <!-- Error Message -->
+  <div *ngIf="error" class="mb-6 p-4 bg-red-100 text-red-700 rounded-lg">
+    {{ error }}
+  </div>
+
+  <!-- Total Balance Card -->
+  <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+    <p class="text-gray-600 mb-2">Balance Total en Tarjetas</p>
+    <p class="text-4xl font-bold text-gray-900">{{ totalBalance }}</p>
+  </div>
+
+  <!-- Loading Spinner -->
+  <div *ngIf="loading" class="flex justify-center p-8">
+    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+  </div>
+
+  <div *ngIf="!loading" class="bg-white rounded-lg shadow-md p-6">
+    <h2 class="text-xl font-bold text-gray-900 mb-4">Mis Tarjetas</h2>
+
+    <div *ngIf="cards.length === 0" class="text-gray-500 text-center py-8">
+      No hay tarjetas registradas
+    </div>
+
+    <div *ngIf="cards.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div *ngFor="let card of cards"
+           (click)="selectCard(card)"
+           class="p-4 rounded-lg border-2 cursor-pointer transition hover:shadow-lg"
+           [class.border-blue-600]="selectedCard?._id === card._id"
+           [class.border-gray-200]="selectedCard?._id !== card._id"
+           [class.bg-blue-50]="selectedCard?._id === card._id">
+        <h3 class="font-bold text-gray-900">{{ card.alias }}</h3>
+        <p class="text-sm text-gray-600">{{ card.maskedNumber }}</p>
+        <p class="text-sm text-gray-600 mt-2">Límite: {{ formatCurrency(card.creditLimitCents) }}</p>
+        <p class="text-lg font-bold text-red-600 mt-3">{{ formatCurrency(card.totalBalanceCents) }}</p>
+        <p class="text-xs text-gray-500">Disponible: {{ formatCurrency(card.availableCreditCents) }}</p>
+      </div>
+    </div>
+
+    <!-- Selected Card Details -->
+    <div *ngIf="selectedCard" class="mt-8 pt-8 border-t">
+      <h3 class="text-2xl font-bold text-gray-900 mb-6">{{ selectedCard.alias }}</h3>
+
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div class="bg-gray-50 p-4 rounded">
+          <p class="text-sm text-gray-600">Límite</p>
+          <p class="text-lg font-bold">{{ formatCurrency(selectedCard.creditLimitCents) }}</p>
+        </div>
+        <div class="bg-gray-50 p-4 rounded">
+          <p class="text-sm text-gray-600">Balance</p>
+          <p class="text-lg font-bold text-red-600">{{ formatCurrency(selectedCard.totalBalanceCents) }}</p>
+        </div>
+        <div class="bg-gray-50 p-4 rounded">
+          <p class="text-sm text-gray-600">Disponible</p>
+          <p class="text-lg font-bold text-green-600">{{ formatCurrency(selectedCard.availableCreditCents) }}</p>
+        </div>
+        <div class="bg-gray-50 p-4 rounded">
+          <p class="text-sm text-gray-600">Cortes</p>
+          <p class="text-lg font-bold">{{ selectedCard.statementCycles.length }}</p>
+        </div>
+      </div>
+
+      <!-- Statement Cycles -->
+      <h4 class="text-lg font-bold text-gray-900 mb-4">Cortes de Estado</h4>
+      <div class="space-y-3">
+        <div *ngFor="let corte of selectedCard.statementCycles"
+             (click)="selectCorte(corte)"
+             class="p-4 rounded border-2 cursor-pointer"
+             [class.border-blue-600]="selectedCorte?._id === corte._id"
+             [class.border-gray-200]="selectedCorte?._id !== corte._id">
+          <div class="flex justify-between items-center">
+            <div>
+              <p class="font-bold">Corte #{{ corte.cycleNumber }} (Cutoff {{ corte.cutoffDay }})</p>
+              <p class="text-sm text-gray-600">{{ corte.openingDate | date: 'short' }} - {{ corte.closingDate | date: 'short' }}</p>
+            </div>
+            <div class="text-right">
+              <p class="font-bold" [class.text-red-600]="corte.balanceCents > 0">{{ formatCurrency(corte.balanceCents) }}</p>
+              <p class="text-xs" [ngClass]="getStatusColor(corte.status)">{{ getStatusLabel(corte.status) }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Corte Details -->
+      <div *ngIf="selectedCorte" class="mt-8 pt-8 border-t">
+        <div class="flex justify-between items-center mb-4">
+          <h4 class="text-lg font-bold">Cargos</h4>
+          <button *ngIf="selectedCorte.status === 'open'"
+                  (click)="openAddChargeDialog()"
+                  class="bg-blue-600 text-white px-3 py-1 rounded text-sm">
+            + Cargo
+          </button>
+        </div>
+
+        <table *ngIf="selectedCorte.charges.length > 0" class="w-full mb-6 text-sm">
+          <thead>
+            <tr class="border-b">
+              <th class="text-left p-2">Descripción</th>
+              <th class="text-right p-2">Monto</th>
+              <th class="text-right p-2">Fecha</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let charge of selectedCorte.charges" class="border-b">
+              <td class="p-2">{{ charge.description }}</td>
+              <td class="text-right p-2">{{ formatCurrency(charge.amountCents) }}</td>
+              <td class="text-right p-2">{{ charge.date | date: 'short' }}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="flex justify-between items-center mb-6 border-t pt-2 font-bold">
+          <span>Total Cargos:</span>
+          <span>{{ formatCurrency(selectedCorte.chargesTotal) }}</span>
+        </div>
+
+        <div class="flex justify-between items-center">
+          <h4 class="text-lg font-bold">Pagos</h4>
+          <button *ngIf="selectedCorte.status === 'open'"
+                  (click)="openPaymentDialog()"
+                  class="bg-green-600 text-white px-3 py-1 rounded text-sm">
+            + Pago
+          </button>
+        </div>
+
+        <table *ngIf="selectedCorte.payments.length > 0" class="w-full my-4 text-sm">
+          <thead>
+            <tr class="border-b">
+              <th class="text-left p-2">Monto</th>
+              <th class="text-right p-2">Fecha</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let payment of selectedCorte.payments" class="border-b">
+              <td class="p-2 text-green-600 font-bold">{{ formatCurrency(payment.amountCents) }}</td>
+              <td class="text-right p-2">{{ payment.date | date: 'short' }}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="flex justify-between items-center border-t pt-2 font-bold mb-6">
+          <span>Total Pagos:</span>
+          <span>{{ formatCurrency(selectedCorte.paymentsTotal) }}</span>
+        </div>
+
+        <div class="bg-blue-100 p-4 rounded border-2 border-blue-300">
+          <div class="flex justify-between text-lg font-bold">
+            <span>Balance:</span>
+            <span [class.text-red-600]="selectedCorte.balanceCents > 0" [class.text-green-600]="selectedCorte.balanceCents <= 0">
+              {{ formatCurrency(selectedCorte.balanceCents) }}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Card Dialog -->
+  <div *ngIf="showAddCardDialog" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+      <h3 class="text-xl font-bold text-gray-900 mb-4">Nueva Tarjeta</h3>
+      <form [formGroup]="cardForm" (ngSubmit)="createCard()" class="space-y-4">
+        <input formControlName="alias" type="text" placeholder="Alias" class="w-full px-3 py-2 border rounded" />
+        <input formControlName="issuer" type="text" placeholder="Emisor" class="w-full px-3 py-2 border rounded" />
+        <input formControlName="maskedNumber" type="text" placeholder="Número" class="w-full px-3 py-2 border rounded" />
+        <input formControlName="holderName" type="text" placeholder="Titular" class="w-full px-3 py-2 border rounded" />
+        <input formControlName="creditLimitCents" type="number" placeholder="Límite (Q)" class="w-full px-3 py-2 border rounded" />
+        <div class="flex gap-3">
+          <button type="button" (click)="closeAddCardDialog()" class="flex-1 px-4 py-2 border rounded">Cancelar</button>
+          <button type="submit" [disabled]="!cardForm.valid" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded">Crear</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Add Charge Dialog -->
+  <div *ngIf="showAddChargeDialog" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+      <h3 class="text-xl font-bold text-gray-900 mb-4">Registrar Cargo</h3>
+      <form [formGroup]="chargeForm" (ngSubmit)="addCharge()" class="space-y-4">
+        <input formControlName="description" type="text" placeholder="Descripción" class="w-full px-3 py-2 border rounded" />
+        <input formControlName="amountCents" type="number" step="0.01" placeholder="Monto (Q)" class="w-full px-3 py-2 border rounded" />
+        <input formControlName="date" type="date" class="w-full px-3 py-2 border rounded" />
+        <input formControlName="note" type="text" placeholder="Nota" class="w-full px-3 py-2 border rounded" />
+        <div class="flex gap-3">
+          <button type="button" (click)="closeAddChargeDialog()" class="flex-1 px-4 py-2 border rounded">Cancelar</button>
+          <button type="submit" [disabled]="!chargeForm.valid" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded">Agregar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Payment Dialog -->
+  <div *ngIf="showPaymentDialog" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+      <h3 class="text-xl font-bold text-gray-900 mb-4">Registrar Pago</h3>
+      <form [formGroup]="paymentForm" (ngSubmit)="recordPayment()" class="space-y-4">
+        <input formControlName="amountCents" type="number" step="0.01" placeholder="Monto (Q)" class="w-full px-3 py-2 border rounded" />
+        <select formControlName="accountId" class="w-full px-3 py-2 border rounded">
+          <option value="">Selecciona cuenta</option>
+          <option *ngFor="let account of accounts" [value]="account._id">{{ account.alias }}</option>
+        </select>
+        <input formControlName="date" type="date" class="w-full px-3 py-2 border rounded" />
+        <input formControlName="note" type="text" placeholder="Nota" class="w-full px-3 py-2 border rounded" />
+        <div class="flex gap-3">
+          <button type="button" (click)="closePaymentDialog()" class="flex-1 px-4 py-2 border rounded">Cancelar</button>
+          <button type="submit" [disabled]="!paymentForm.valid" class="flex-1 px-4 py-2 bg-green-600 text-white rounded">Registrar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

@@ -33,7 +33,8 @@ export class AuthController {
       return { token, user: newUser, message: 'Usuario creado exitosamente' };
     } catch (error) {
       console.error('Registration error:', error);
-      return { error: error.message || 'Error al registrar usuario', details: error };
+      const errorMsg = error instanceof Error ? error.message : 'Error al registrar usuario';
+      return { error: errorMsg, details: error };
     }
   }
 
