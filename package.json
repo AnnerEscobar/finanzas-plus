@@ -12,5 +12,8 @@
     "build": "npm run build --workspace=apps/frontend && npm run build --workspace=apps/backend",
     "test": "npm test --workspaces",
     "lint": "npm run lint --workspaces"
+  },
+  "devDependencies": {
+    "typescript": "~5.4.5"
   }
 }

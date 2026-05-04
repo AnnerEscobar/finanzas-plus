@@ -4,25 +4,25 @@ import { Document } from 'mongoose';
 @Schema({ timestamps: true })
 export class User extends Document {
   @Prop({ required: true })
-  name: string;
+  name!: string;
 
   @Prop({ required: true, unique: true })
-  email: string;
+  email!: string;
 
   @Prop({ default: 'Q' })
-  currency: string;
+  currency!: string;
 
   @Prop({ default: 'America/Guatemala' })
-  timezone: string;
+  timezone!: string;
 
   @Prop({ type: Object, default: {} })
-  settings: Record<string, any>;
+  settings!: Record<string, any>;
 
   @Prop()
-  createdAt: Date;
+  createdAt?: Date;
 
   @Prop()
-  updatedAt: Date;
+  updatedAt?: Date;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

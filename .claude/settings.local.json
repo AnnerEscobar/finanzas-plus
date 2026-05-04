@@ -16,7 +16,10 @@
       "Bash(mkdir -p \"C:\\\\Users\\\\anner\\\\Desktop\\\\PROYECTOS PERSONALES\\\\finanzas-plus\\\\apps\\\\frontend\\\\src\\\\app\\\\{core,shared,modules\\\\/{dashboard,accounts,movements,creditCards,debts,funds,reports,debtPlan}}\")",
       "Bash(mkdir -p \"C:\\\\Users\\\\anner\\\\Desktop\\\\PROYECTOS PERSONALES\\\\finanzas-plus\\\\apps\\\\frontend\\\\{public,dist}\")",
       "Bash(git add *)",
-      "Bash(git commit -m 'Initial project structure: frontend \\(Angular\\) and backend \\(NestJS\\) *)"
+      "Bash(git commit -m 'Initial project structure: frontend \\(Angular\\) and backend \\(NestJS\\) *)",
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(git commit -m 'Install dependencies and configure .env files for development *)"
     ]
   }
 }

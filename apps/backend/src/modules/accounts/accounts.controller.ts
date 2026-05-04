@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Put, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Put, UseGuards, Req } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AccountsService } from './accounts.service';
 
@@ -8,17 +8,17 @@ export class AccountsController {
   constructor(private accountsService: AccountsService) {}
 
   @Post()
-  create(@Body() accountData: any, @Request() req) {
+  create(@Body() accountData: any, @Req() req: any) {
     return this.accountsService.create(req.user.userId, accountData);
   }
 
   @Get()
-  findByUser(@Request() req) {
+  findByUser(@Req() req: any) {
     return this.accountsService.findByUserId(req.user.userId);
   }
 
   @Get('total')
-  getTotalBalance(@Request() req) {
+  getTotalBalance(@Req() req: any) {
     return this.accountsService.getTotalBalance(req.user.userId);
   }
 

@@ -4,31 +4,31 @@ import { Document, Types } from 'mongoose';
 @Schema({ timestamps: true })
 export class Account extends Document {
   @Prop({ required: true, type: Types.ObjectId, ref: 'User' })
-  userId: string;
+  userId!: string;
 
   @Prop({ required: true })
-  alias: string;
+  alias!: string;
 
   @Prop({ required: false })
-  institution: string;
+  institution?: string;
 
   @Prop({ enum: ['checking', 'savings', 'cash', 'credit_union'], default: 'checking' })
-  type: string;
+  type!: string;
 
   @Prop({ required: true, default: 0 })
-  currentBalanceCents: number;
+  currentBalanceCents!: number;
 
   @Prop({ required: true, default: 0 })
-  initialBalanceCents: number;
+  initialBalanceCents!: number;
 
   @Prop({ default: true })
-  isActive: boolean;
+  isActive!: boolean;
 
   @Prop()
-  createdAt: Date;
+  createdAt?: Date;
 
   @Prop()
-  updatedAt: Date;
+  updatedAt?: Date;
 }
 
 export const AccountSchema = SchemaFactory.createForClass(Account);
