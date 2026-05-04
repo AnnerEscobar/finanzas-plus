@@ -19,7 +19,9 @@
       "Bash(git commit -m 'Initial project structure: frontend \\(Angular\\) and backend \\(NestJS\\) *)",
       "Bash(npm install *)",
       "Bash(npm run *)",
-      "Bash(git commit -m 'Install dependencies and configure .env files for development *)"
+      "Bash(git commit -m 'Install dependencies and configure .env files for development *)",
+      "Bash(docker --version)",
+      "Bash(docker run *)"
     ]
   }
 }
