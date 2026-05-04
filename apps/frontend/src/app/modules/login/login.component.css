@@ -1,0 +1,16 @@
+/* Login Component Styles */
+
+/* Smooth transitions for form elements */
+input {
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+input:focus {
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* Button animations */
+button:active {
+  transform: translateY(1px);
+  transition: transform 0.1s ease;
+}
