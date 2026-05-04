@@ -3,13 +3,15 @@ import { CommonModule } from '@angular/common';
 import { RouterLink, Router } from '@angular/router';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
+import { NgChartsModule } from 'ng2-charts';
+import { ChartConfiguration, ChartData } from 'chart.js';
 import { AccountsService } from '../../core/services/accounts.service';
 import { AuthService } from '../../core/services/auth.service';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, RouterLink, NgChartsModule],
   templateUrl: './dashboard.component.html',
   styleUrls: ['./dashboard.component.css'],
 })
@@ -23,6 +25,102 @@ export class DashboardComponent implements OnInit, OnDestroy {
   // Loading states
   loading: boolean = true;
   error: string = '';
+
+  // Chart data - Balance trend (mock data for Sprint 1)
+  balanceTrendChartData: ChartData<'line'> = {
+    labels: ['Ene', 'Feb', 'Mar', 'Abr', 'May'],
+    datasets: [
+      {
+        label: 'Saldo Disponible',
+        data: [250000, 280000, 310000, 290000, 350000],
+        borderColor: '#10b981',
+        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+        fill: true,
+        tension: 0.4,
+      },
+    ],
+  };
+
+  balanceTrendChartOptions: ChartConfiguration<'line'>['options'] = {
+    responsive: true,
+    maintainAspectRatio: true,
+    plugins: {
+      legend: {
+        display: true,
+        position: 'top',
+      },
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+      },
+    },
+  };
+
+  // Chart data - Expense by category (mock data for Sprint 1)
+  expenseByCategoryChartData: ChartData<'doughnut'> = {
+    labels: ['Comida', 'Servicios', 'Entretenimiento', 'Salud', 'Otros'],
+    datasets: [
+      {
+        data: [1200, 800, 600, 400, 300],
+        backgroundColor: [
+          '#f87171',
+          '#fbbf24',
+          '#60a5fa',
+          '#34d399',
+          '#a78bfa',
+        ],
+        borderColor: '#fff',
+        borderWidth: 2,
+      },
+    ],
+  };
+
+  expenseByCategoryChartOptions: ChartConfiguration<'doughnut'>['options'] = {
+    responsive: true,
+    maintainAspectRatio: true,
+    plugins: {
+      legend: {
+        display: true,
+        position: 'right',
+      },
+    },
+  };
+
+  // Chart data - Income vs Expense (mock data for Sprint 1)
+  incomeVsExpenseChartData: ChartData<'bar'> = {
+    labels: ['Ene', 'Feb', 'Mar', 'Abr', 'May'],
+    datasets: [
+      {
+        label: 'Ingresos',
+        data: [300000, 300000, 350000, 300000, 350000],
+        backgroundColor: '#10b981',
+        borderRadius: 4,
+      },
+      {
+        label: 'Gastos',
+        data: [120000, 95000, 140000, 110000, 105000],
+        backgroundColor: '#ef4444',
+        borderRadius: 4,
+      },
+    ],
+  };
+
+  incomeVsExpenseChartOptions: ChartConfiguration<'bar'>['options'] = {
+    responsive: true,
+    maintainAspectRatio: true,
+    plugins: {
+      legend: {
+        display: true,
+        position: 'top',
+      },
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+      },
+    },
+  };
 
   // Unsubscribe
   private destroy$ = new Subject<void>();
