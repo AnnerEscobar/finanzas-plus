@@ -12,24 +12,29 @@ export class AuthController {
   @Post('register')
   @HttpCode(201)
   async register(@Body() body: { name: string; email: string; userId?: string }) {
-    const userId = body.userId || body.email || `user-${Date.now()}`;
+    try {
+      const userId = body.userId || body.email || `user-${Date.now()}`;
 
-    const existingUser = await this.usersService.findById(userId);
-    if (existingUser) {
-      return { error: 'Usuario ya existe', statusCode: 400 };
+      const existingUser = await this.usersService.findById(userId);
+      if (existingUser) {
+        return { error: 'Usuario ya existe', statusCode: 400 };
+      }
+
+      const newUser = await this.usersService.create({
+        _id: userId,
+        name: body.name || 'Usuario',
+        email: body.email || `user-${Date.now()}@example.com`,
+        currency: 'Q',
+        timezone: 'America/Guatemala',
+        settings: {},
+      });
+
+      const token = this.authService.generateToken(userId);
+      return { token, user: newUser, message: 'Usuario creado exitosamente' };
+    } catch (error) {
+      console.error('Registration error:', error);
+      return { error: error.message || 'Error al registrar usuario', details: error };
     }
-
-    const newUser = await this.usersService.create({
-      _id: userId,
-      name: body.name || 'Usuario',
-      email: body.email || `user-${Date.now()}@example.com`,
-      currency: 'Q',
-      timezone: 'America/Guatemala',
-      settings: {},
-    });
-
-    const token = this.authService.generateToken(userId);
-    return { token, user: newUser, message: 'Usuario creado exitosamente' };
   }
 
   @Post('login')

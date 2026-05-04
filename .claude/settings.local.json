@@ -34,7 +34,19 @@
       "Bash(netstat -ano)",
       "Bash(taskkill /PID 40948 /F)",
       "Bash(taskkill /PID 40948 /F /T)",
-      "Bash(taskkill /IM node.exe /F /T)"
+      "Bash(taskkill /IM node.exe /F /T)",
+      "Bash(taskkill /IM node.exe /F)",
+      "Bash(taskkill /PID 42000 /F /T)",
+      "Bash(findstr \":8888\")",
+      "Bash(findstr \":5000\")",
+      "Bash(findstr \":3001\")",
+      "Bash(findstr \":4200\")",
+      "Bash(taskkill /PID 41132 /F /T)",
+      "PowerShell(Get-Process | Where-Object { $_.Port -eq 8888 -or $_.Port -eq 3001 } | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; Get-NetTCPConnection -LocalPort 8888 -ErrorAction SilentlyContinue | % { Stop-Process -Id $_.OwningProcess -Force }; Write-Host \"✓ Procesos limpiados\")",
+      "Bash(curl -s http://localhost:9999/api/)",
+      "PowerShell($port = 9999; $proc = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess; if \\($proc\\) { Stop-Process -Id $proc -Force -ErrorAction SilentlyContinue; Write-Host \"✓ Proceso en puerto $port detenido \\(PID: $proc\\)\"; Start-Sleep -Seconds 2 } else { Write-Host \"✓ Puerto $port ya está libre\" })",
+      "Bash(docker stop *)",
+      "Bash(docker rm *)"
     ]
   }
 }

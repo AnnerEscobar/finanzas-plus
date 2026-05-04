@@ -26,3 +26,6 @@ export class User extends Document {
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
+// Allow string _id for custom user IDs
+UserSchema.set('_id', false);
+UserSchema.add({ _id: { type: String, required: true } });
