@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "scripts": {
     "dev": "ng serve --open",
-    "build": "ng build --configuration production",
-    "build:prod": "ng build --configuration production",
+    "build": "node --max-old-space-size=4096 node_modules/@angular/cli/bin/ng.js build --configuration production",
+    "build:prod": "node --max-old-space-size=4096 node_modules/@angular/cli/bin/ng.js build --configuration production",
     "start": "node server.js",
     "lint": "ng lint",
     "test": "ng test"
