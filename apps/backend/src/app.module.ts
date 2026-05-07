@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule } from './config/config.module';
 import { AuthModule } from './modules/auth/auth.module';
-import { MigrationModule } from './modules/migration/migration.module';
 import { UsersModule } from './modules/users/users.module';
 import { AccountsModule } from './modules/accounts/accounts.module';
 import { MovementsModule } from './modules/movements/movements.module';
@@ -27,7 +26,6 @@ import { ClosuresModule } from './modules/closures/closures.module';
     DebtPlanModule,
     ReportsModule,
     ClosuresModule,
-    MigrationModule,
   ],
 })
 export class AppModule {}
