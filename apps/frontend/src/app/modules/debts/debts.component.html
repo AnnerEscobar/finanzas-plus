@@ -1,0 +1,513 @@
+<app-navbar></app-navbar>
+
+<div class="p-6 bg-gray-50 min-h-screen">
+  <!-- Header -->
+  <div class="flex justify-between items-center mb-6">
+    <h1 class="text-3xl font-bold text-gray-900">Deudas</h1>
+    <button
+      (click)="openAddDebtDialog()"
+      class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition"
+    >
+      + Nueva Deuda
+    </button>
+  </div>
+
+  <!-- Error -->
+  <div *ngIf="error" class="mb-6 p-4 bg-red-100 text-red-700 rounded-lg">
+    {{ error }}
+  </div>
+
+  <!-- Summary Cards -->
+  <div *ngIf="summary" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="bg-white p-4 rounded-lg shadow">
+      <p class="text-sm text-gray-600">Saldo Total</p>
+      <p class="text-2xl font-bold text-red-600">{{ summary.totalRemainingFormatted }}</p>
+    </div>
+    <div class="bg-white p-4 rounded-lg shadow">
+      <p class="text-sm text-gray-600">Monto Original</p>
+      <p class="text-2xl font-bold text-gray-900">{{ summary.totalOriginalFormatted }}</p>
+    </div>
+    <div class="bg-white p-4 rounded-lg shadow">
+      <p class="text-sm text-gray-600">Total Pagado</p>
+      <p class="text-2xl font-bold text-green-600">{{ summary.totalPaidFormatted }}</p>
+    </div>
+    <div class="bg-white p-4 rounded-lg shadow">
+      <p class="text-sm text-gray-600">Cuotas Mensuales</p>
+      <p class="text-2xl font-bold text-blue-600">{{ summary.totalMonthlyPaymentFormatted }}</p>
+    </div>
+  </div>
+
+  <!-- Progress -->
+  <div *ngIf="summary && summary.count > 0" class="bg-white p-4 rounded-lg shadow mb-6">
+    <div class="flex justify-between items-center mb-2">
+      <span class="text-sm font-medium text-gray-700">Progreso General</span>
+      <span class="text-sm font-bold text-gray-900">{{ summary.progressPercentage }}%</span>
+    </div>
+    <div class="w-full bg-gray-200 rounded-full h-3">
+      <div
+        class="bg-green-500 h-3 rounded-full transition-all duration-500"
+        [style.width.%]="summary.progressPercentage"
+      ></div>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div *ngIf="loading" class="flex justify-center p-8">
+    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+  </div>
+
+  <!-- Empty State -->
+  <div *ngIf="!loading && debts.length === 0" class="bg-white rounded-lg shadow p-12 text-center">
+    <p class="text-gray-500 text-lg mb-4">No hay deudas registradas</p>
+    <button
+      (click)="openAddDebtDialog()"
+      class="bg-blue-600 text-white px-6 py-2 rounded-lg"
+    >
+      Registrar primera deuda
+    </button>
+  </div>
+
+  <!-- Debts Grid -->
+  <div *ngIf="!loading && debts.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+    <div
+      *ngFor="let debt of debts"
+      (click)="selectDebt(debt)"
+      class="bg-white p-5 rounded-lg shadow cursor-pointer transition border-2 hover:shadow-lg"
+      [class.border-blue-600]="selectedDebt?._id === debt._id"
+      [class.border-transparent]="selectedDebt?._id !== debt._id"
+    >
+      <div class="flex justify-between items-start mb-3">
+        <div>
+          <h3 class="font-bold text-gray-900">{{ debt.alias }}</h3>
+          <p class="text-sm text-gray-600">{{ debt.creditorName }}</p>
+        </div>
+        <span class="text-xs px-2 py-1 rounded" [ngClass]="getStatusColor(debt.status)">
+          {{ getStatusLabel(debt.status) }}
+        </span>
+      </div>
+
+      <div class="text-xs text-gray-500 mb-2">{{ getDebtTypeLabel(debt.debtType) }}</div>
+
+      <p class="text-2xl font-bold text-red-600 mb-1">{{ formatCurrency(debt.remainingCents) }}</p>
+      <p class="text-xs text-gray-500 mb-3">
+        de {{ formatCurrency(debt.originalAmountCents) }}
+      </p>
+
+      <!-- Progress -->
+      <div class="w-full bg-gray-200 rounded-full h-2 mb-2">
+        <div
+          class="bg-green-500 h-2 rounded-full transition-all"
+          [style.width.%]="calculateProgress(debt)"
+        ></div>
+      </div>
+      <div class="flex justify-between text-xs text-gray-500">
+        <span>{{ calculateProgress(debt) }}%</span>
+        <span *ngIf="debt.monthlyPaymentCents > 0">
+          {{ formatCurrency(debt.monthlyPaymentCents) }}/mes
+        </span>
+      </div>
+
+      <div *ngIf="debt.totalInstallments > 0" class="mt-2 text-xs text-gray-500 flex justify-between">
+        <span>Cuota {{ debt.paidInstallments }}/{{ debt.totalInstallments }}</span>
+        <span *ngIf="debt.status === 'active'" class="text-blue-600 font-semibold">
+          Próxima: #{{ getNextInstallment(debt) }}
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Selected Debt Details -->
+  <div *ngIf="selectedDebt" class="bg-white rounded-lg shadow-lg p-6">
+    <div class="flex justify-between items-start mb-6">
+      <div>
+        <h2 class="text-2xl font-bold text-gray-900">{{ selectedDebt.alias }}</h2>
+        <p class="text-gray-600">{{ selectedDebt.creditorName }}</p>
+        <span
+          class="inline-block mt-2 text-xs px-2 py-1 rounded"
+          [ngClass]="getStatusColor(selectedDebt.status)"
+        >
+          {{ getStatusLabel(selectedDebt.status) }}
+        </span>
+      </div>
+
+      <div class="flex gap-2">
+        <button
+          (click)="openEditDebtDialog()"
+          class="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-50"
+        >
+          Editar
+        </button>
+        <button
+          (click)="deleteDebt()"
+          class="px-3 py-1 border border-red-300 text-red-600 rounded text-sm hover:bg-red-50"
+        >
+          Eliminar
+        </button>
+      </div>
+    </div>
+
+    <!-- Stats Grid -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div class="bg-gray-50 p-3 rounded">
+        <p class="text-xs text-gray-600">Monto Original</p>
+        <p class="text-lg font-bold">{{ formatCurrency(selectedDebt.originalAmountCents) }}</p>
+      </div>
+      <div class="bg-gray-50 p-3 rounded">
+        <p class="text-xs text-gray-600">Saldo Restante</p>
+        <p class="text-lg font-bold text-red-600">{{ formatCurrency(selectedDebt.remainingCents) }}</p>
+      </div>
+      <div class="bg-gray-50 p-3 rounded">
+        <p class="text-xs text-gray-600">Cuota Mensual</p>
+        <p class="text-lg font-bold">{{ formatCurrency(selectedDebt.monthlyPaymentCents) }}</p>
+      </div>
+      <div class="bg-gray-50 p-3 rounded">
+        <p class="text-xs text-gray-600">Interés Anual</p>
+        <p class="text-lg font-bold">{{ selectedDebt.interestRate }}%</p>
+      </div>
+    </div>
+
+    <!-- Additional Info -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 text-sm">
+      <div *ngIf="selectedDebt.totalInstallments > 0">
+        <span class="text-gray-600">Cuotas:</span>
+        <strong class="ml-2">{{ selectedDebt.paidInstallments }}/{{ selectedDebt.totalInstallments }}</strong>
+      </div>
+      <div *ngIf="selectedDebt.totalInstallments > 0 && selectedDebt.status === 'active'">
+        <span class="text-gray-600">Próxima cuota:</span>
+        <strong class="ml-2 text-blue-700">#{{ getNextInstallment(selectedDebt) }}</strong>
+        <span class="text-xs text-gray-500 ml-1">
+          ({{ getRemainingInstallments(selectedDebt) }} restantes)
+        </span>
+      </div>
+      <div *ngIf="selectedDebt.startDate">
+        <span class="text-gray-600">Inicio:</span>
+        <strong class="ml-2">{{ selectedDebt.startDate | date: 'mediumDate' }}</strong>
+      </div>
+      <div *ngIf="selectedDebt.dueDate">
+        <span class="text-gray-600">Vence:</span>
+        <strong class="ml-2">{{ selectedDebt.dueDate | date: 'mediumDate' }}</strong>
+      </div>
+      <div>
+        <span class="text-gray-600">Tipo:</span>
+        <strong class="ml-2">{{ getDebtTypeLabel(selectedDebt.debtType) }}</strong>
+      </div>
+    </div>
+
+    <div *ngIf="selectedDebt.note" class="bg-yellow-50 border border-yellow-200 p-3 rounded mb-6 text-sm">
+      <strong>Nota:</strong> {{ selectedDebt.note }}
+    </div>
+
+    <!-- Progress -->
+    <div class="mb-6">
+      <div class="flex justify-between mb-1">
+        <span class="text-sm font-medium">Progreso de pago</span>
+        <span class="text-sm font-bold">{{ calculateProgress(selectedDebt) }}%</span>
+      </div>
+      <div class="w-full bg-gray-200 rounded-full h-3">
+        <div
+          class="bg-green-500 h-3 rounded-full transition-all duration-500"
+          [style.width.%]="calculateProgress(selectedDebt)"
+        ></div>
+      </div>
+    </div>
+
+    <!-- Payments Section -->
+    <div class="border-t pt-6">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-lg font-bold">Historial de Pagos ({{ selectedDebt.payments.length }})</h3>
+        <button
+          *ngIf="selectedDebt.status === 'active'"
+          (click)="openPaymentDialog()"
+          class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm"
+        >
+          + Registrar Pago
+        </button>
+      </div>
+
+      <div *ngIf="selectedDebt.payments.length === 0" class="text-gray-500 text-center py-4 text-sm">
+        No hay pagos registrados
+      </div>
+
+      <table *ngIf="selectedDebt.payments.length > 0" class="w-full text-sm">
+        <thead>
+          <tr class="border-b text-left">
+            <th class="p-2">Fecha</th>
+            <th class="p-2 text-right">Monto</th>
+            <th class="p-2 text-right">Capital</th>
+            <th class="p-2 text-right">Interés</th>
+            <th class="p-2">Nota</th>
+            <th class="p-2"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let payment of selectedDebt.payments" class="border-b hover:bg-gray-50">
+            <td class="p-2">{{ payment.date | date: 'shortDate' }}</td>
+            <td class="p-2 text-right font-bold text-green-600">{{ formatCurrency(payment.amountCents) }}</td>
+            <td class="p-2 text-right text-gray-600">
+              {{ payment.principalCents ? formatCurrency(payment.principalCents) : '-' }}
+            </td>
+            <td class="p-2 text-right text-gray-600">
+              {{ payment.interestCents ? formatCurrency(payment.interestCents) : '-' }}
+            </td>
+            <td class="p-2 text-gray-600">{{ payment.note || '-' }}</td>
+            <td class="p-2 text-right">
+              <button
+                (click)="deletePayment(payment._id)"
+                class="text-red-600 text-xs hover:underline"
+              >
+                Eliminar
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Add Debt Dialog -->
+  <div *ngIf="showAddDebtDialog" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <h3 class="text-xl font-bold mb-4">Nueva Deuda</h3>
+      <form [formGroup]="debtForm" (ngSubmit)="createDebt()" class="space-y-3">
+        <div>
+          <label class="block text-sm font-medium mb-1">Alias *</label>
+          <input formControlName="alias" type="text" placeholder="Ej: Préstamo Promerica" class="w-full px-3 py-2 border rounded" />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium mb-1">Acreedor *</label>
+          <input formControlName="creditorName" type="text" placeholder="Ej: Banco Promerica" class="w-full px-3 py-2 border rounded" />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium mb-1">Tipo</label>
+          <select formControlName="debtType" class="w-full px-3 py-2 border rounded">
+            <option value="loan">Préstamo</option>
+            <option value="advance">Adelanto</option>
+            <option value="cooperative">Cooperativa</option>
+            <option value="personal">Personal</option>
+            <option value="other">Otro</option>
+          </select>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium mb-1">Monto Original (Q) *</label>
+            <input formControlName="originalAmountCents" type="number" step="0.01" placeholder="0.00" class="w-full px-3 py-2 border rounded" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Cuota Mensual (Q)</label>
+            <input formControlName="monthlyPaymentCents" type="number" step="0.01" placeholder="0.00" class="w-full px-3 py-2 border rounded" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium mb-1">Interés Anual (%)</label>
+            <input formControlName="interestRate" type="number" step="0.01" placeholder="0" class="w-full px-3 py-2 border rounded" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Total Cuotas</label>
+            <input formControlName="totalInstallments" type="number" placeholder="0" class="w-full px-3 py-2 border rounded" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium mb-1">Cuotas Pagadas</label>
+            <input formControlName="paidInstallments" type="number" placeholder="0" class="w-full px-3 py-2 border rounded" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Fecha Inicio</label>
+            <input formControlName="startDate" type="date" class="w-full px-3 py-2 border rounded" />
+          </div>
+        </div>
+
+        <!-- Saldo Restante (opcional - override) -->
+        <div class="bg-blue-50 border border-blue-200 rounded p-3">
+          <label class="block text-sm font-medium mb-1">
+            Saldo Restante Actual (Q)
+            <span class="text-xs font-normal text-gray-500">(opcional)</span>
+          </label>
+          <input
+            formControlName="remainingCents"
+            type="number"
+            step="0.01"
+            placeholder="Dejar vacío para auto-calcular"
+            class="w-full px-3 py-2 border rounded"
+          />
+          <p class="text-xs text-gray-600 mt-1">
+            <span *ngIf="getCalculatedRemainingPreview()">
+              Saldo a registrar: <strong class="text-blue-700">{{ getCalculatedRemainingPreview() }}</strong>
+            </span>
+            <span *ngIf="!getCalculatedRemainingPreview()" class="italic">
+              Si dejas este campo vacío y registras "Cuotas Pagadas", el sistema calculará: Original − (Cuotas Pagadas × Cuota Mensual)
+            </span>
+          </p>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium mb-1">Fecha Vencimiento</label>
+          <input formControlName="dueDate" type="date" class="w-full px-3 py-2 border rounded" />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium mb-1">Nota</label>
+          <textarea formControlName="note" rows="2" class="w-full px-3 py-2 border rounded"></textarea>
+        </div>
+
+        <div class="flex gap-3 pt-2">
+          <button type="button" (click)="closeAddDebtDialog()" class="flex-1 px-4 py-2 border rounded hover:bg-gray-50">
+            Cancelar
+          </button>
+          <button type="submit" [disabled]="!debtForm.valid || loading" class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50">
+            {{ loading ? 'Creando...' : 'Crear Deuda' }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Edit Debt Dialog -->
+  <div *ngIf="showEditDebtDialog" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <h3 class="text-xl font-bold mb-4">Editar Deuda</h3>
+      <form [formGroup]="editForm" (ngSubmit)="updateDebt()" class="space-y-3">
+        <div>
+          <label class="block text-sm font-medium mb-1">Alias *</label>
+          <input formControlName="alias" type="text" class="w-full px-3 py-2 border rounded" />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium mb-1">Acreedor *</label>
+          <input formControlName="creditorName" type="text" class="w-full px-3 py-2 border rounded" />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium mb-1">Tipo</label>
+          <select formControlName="debtType" class="w-full px-3 py-2 border rounded">
+            <option value="loan">Préstamo</option>
+            <option value="advance">Adelanto</option>
+            <option value="cooperative">Cooperativa</option>
+            <option value="personal">Personal</option>
+            <option value="other">Otro</option>
+          </select>
+        </div>
+
+        <!-- Saldo Restante (editable para corregir) -->
+        <div class="bg-blue-50 border border-blue-200 rounded p-3">
+          <label class="block text-sm font-medium mb-1">Saldo Restante Actual (Q) *</label>
+          <input
+            formControlName="remainingCents"
+            type="number"
+            step="0.01"
+            class="w-full px-3 py-2 border rounded"
+          />
+          <p class="text-xs text-gray-600 mt-1">
+            Ajusta este valor si difiere del cálculo. Para Promerica con cuota 23/60 sería: 177000 − (23 × 2950) = <strong>Q109,150</strong>
+          </p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium mb-1">Cuota Mensual (Q)</label>
+            <input formControlName="monthlyPaymentCents" type="number" step="0.01" class="w-full px-3 py-2 border rounded" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Interés Anual (%)</label>
+            <input formControlName="interestRate" type="number" step="0.01" class="w-full px-3 py-2 border rounded" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium mb-1">Total Cuotas</label>
+            <input formControlName="totalInstallments" type="number" class="w-full px-3 py-2 border rounded" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Cuotas Pagadas</label>
+            <input formControlName="paidInstallments" type="number" class="w-full px-3 py-2 border rounded" />
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium mb-1">Fecha Vencimiento</label>
+          <input formControlName="dueDate" type="date" class="w-full px-3 py-2 border rounded" />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium mb-1">Nota</label>
+          <textarea formControlName="note" rows="2" class="w-full px-3 py-2 border rounded"></textarea>
+        </div>
+
+        <div class="flex gap-3 pt-2">
+          <button type="button" (click)="closeEditDebtDialog()" class="flex-1 px-4 py-2 border rounded hover:bg-gray-50">
+            Cancelar
+          </button>
+          <button type="submit" [disabled]="!editForm.valid || loading" class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50">
+            {{ loading ? 'Guardando...' : 'Guardar' }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Payment Dialog -->
+  <div *ngIf="showPaymentDialog" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+      <h3 class="text-xl font-bold mb-4">Registrar Pago</h3>
+      <p *ngIf="selectedDebt" class="text-sm text-gray-600 mb-4">
+        Saldo actual: <strong class="text-red-600">{{ formatCurrency(selectedDebt.remainingCents) }}</strong>
+      </p>
+      <form [formGroup]="paymentForm" (ngSubmit)="recordPayment()" class="space-y-3">
+        <div>
+          <label class="block text-sm font-medium mb-1">Monto Total (Q) *</label>
+          <input formControlName="amountCents" type="number" step="0.01" class="w-full px-3 py-2 border rounded" />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium mb-1">Fecha</label>
+          <input formControlName="date" type="date" class="w-full px-3 py-2 border rounded" />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium mb-1">Cuenta de Pago</label>
+          <select formControlName="accountId" class="w-full px-3 py-2 border rounded">
+            <option value="">Sin especificar</option>
+            <option *ngFor="let account of accounts" [value]="account._id">
+              {{ account.alias }}
+            </option>
+          </select>
+        </div>
+
+        <div class="border-t pt-3">
+          <p class="text-xs text-gray-600 mb-2">Desglose opcional (capital + interés = monto total):</p>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm font-medium mb-1">Capital (Q)</label>
+              <input formControlName="principalCents" type="number" step="0.01" placeholder="0.00" class="w-full px-3 py-2 border rounded" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1">Interés (Q)</label>
+              <input formControlName="interestCents" type="number" step="0.01" placeholder="0.00" class="w-full px-3 py-2 border rounded" />
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium mb-1">Nota</label>
+          <input formControlName="note" type="text" class="w-full px-3 py-2 border rounded" />
+        </div>
+
+        <div class="flex gap-3 pt-2">
+          <button type="button" (click)="closePaymentDialog()" class="flex-1 px-4 py-2 border rounded hover:bg-gray-50">
+            Cancelar
+          </button>
+          <button type="submit" [disabled]="!paymentForm.valid || loading" class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded disabled:opacity-50">
+            {{ loading ? 'Registrando...' : 'Registrar' }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

@@ -1,223 +1,619 @@
-<div class="p-6 bg-gray-50 min-h-screen">
+<app-navbar></app-navbar>
+
+<div class="p-4 md:p-6 bg-gray-50 min-h-screen">
+
   <!-- Header -->
   <div class="flex justify-between items-center mb-6">
-    <h1 class="text-3xl font-bold text-gray-900">Tarjetas de Crédito</h1>
-    <button
-      (click)="openAddCardDialog()"
-      class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition"
-    >
+    <h1 class="text-2xl md:text-3xl font-bold text-gray-900">Tarjetas de Crédito</h1>
+    <button (click)="openAddCardDialog()"
+            class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition text-sm">
       + Nueva Tarjeta
     </button>
   </div>
 
-  <!-- Error Message -->
-  <div *ngIf="error" class="mb-6 p-4 bg-red-100 text-red-700 rounded-lg">
-    {{ error }}
+  <!-- Alerts -->
+  <div *ngIf="error" class="mb-4 p-4 bg-red-100 border border-red-300 text-red-700 rounded-lg flex justify-between">
+    <span>{{ error }}</span>
+    <button (click)="error = null" class="ml-2 font-bold">✕</button>
+  </div>
+  <div *ngIf="success" class="mb-4 p-4 bg-green-100 border border-green-300 text-green-700 rounded-lg flex justify-between">
+    <span>{{ success }}</span>
+    <button (click)="success = null" class="ml-2 font-bold">✕</button>
   </div>
 
-  <!-- Total Balance Card -->
-  <div class="bg-white p-6 rounded-lg shadow-md mb-6">
-    <p class="text-gray-600 mb-2">Balance Total en Tarjetas</p>
-    <p class="text-4xl font-bold text-gray-900">{{ totalBalance }}</p>
+  <!-- Migration Banner -->
+  <div *ngIf="needsMigration && !migrating" class="mb-4 p-4 bg-yellow-50 border border-yellow-300 rounded-xl">
+    <div class="flex justify-between items-start">
+      <div>
+        <p class="font-bold text-yellow-800">⚠️ Actualización requerida (Sprint 5)</p>
+        <p class="text-sm text-yellow-700 mt-1">
+          Tus tarjetas necesitan configurar el <strong>día de corte</strong> y <strong>día de vencimiento</strong>
+          para funcionar correctamente con los nuevos flujos de pago.
+        </p>
+      </div>
+      <button (click)="showMigrationForm = !showMigrationForm"
+              class="ml-4 px-3 py-1.5 text-sm bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 flex-shrink-0">
+        {{ showMigrationForm ? 'Cancelar' : 'Configurar' }}
+      </button>
+    </div>
+
+    <!-- Migration form -->
+    <div *ngIf="showMigrationForm" class="mt-4 space-y-3">
+      <div *ngFor="let cardId of getMigrationKeys()" class="bg-white rounded-lg p-3 border border-yellow-200">
+        <p class="font-medium text-gray-800 text-sm mb-2">{{ getCardName(cardId) }}</p>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">Día de corte (1-31)</label>
+            <input type="number" min="1" max="31"
+                   [(ngModel)]="migrationOverrides[cardId].cutoffDay"
+                   class="w-full px-2 py-1.5 border rounded text-sm focus:ring-2 focus:ring-yellow-400 outline-none" />
+            <p class="text-xs text-gray-400 mt-0.5">Ej: G&T primera es 15, segunda es 3</p>
+          </div>
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">Día vencimiento pago (1-31)</label>
+            <input type="number" min="1" max="31"
+                   [(ngModel)]="migrationOverrides[cardId].paymentDueDay"
+                   class="w-full px-2 py-1.5 border rounded text-sm focus:ring-2 focus:ring-yellow-400 outline-none" />
+            <p class="text-xs text-gray-400 mt-0.5">Ej: G&T primera es 10, segunda es 28</p>
+          </div>
+        </div>
+      </div>
+      <button (click)="runMigration()" [disabled]="migrating"
+              class="w-full py-2 bg-yellow-600 text-white rounded-lg text-sm hover:bg-yellow-700 font-medium disabled:opacity-50">
+        {{ migrating ? 'Actualizando...' : 'Aplicar configuración y migrar tarjetas' }}
+      </button>
+    </div>
   </div>
 
-  <!-- Loading Spinner -->
+  <!-- Total Balance -->
+  <div class="bg-white p-5 rounded-xl shadow-sm border mb-6">
+    <p class="text-sm text-gray-500 mb-1">Saldo Total en Tarjetas</p>
+    <p class="text-4xl font-bold text-red-600">{{ totalBalance }}</p>
+  </div>
+
+  <!-- Loading -->
   <div *ngIf="loading" class="flex justify-center p-8">
-    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+    <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
   </div>
 
-  <div *ngIf="!loading" class="bg-white rounded-lg shadow-md p-6">
-    <h2 class="text-xl font-bold text-gray-900 mb-4">Mis Tarjetas</h2>
+  <div *ngIf="!loading">
 
-    <div *ngIf="cards.length === 0" class="text-gray-500 text-center py-8">
-      No hay tarjetas registradas
-    </div>
+    <!-- Cards Grid -->
+    <div class="bg-white rounded-xl shadow-sm border p-5 mb-6">
+      <h2 class="text-lg font-bold text-gray-900 mb-4">Mis Tarjetas</h2>
 
-    <div *ngIf="cards.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      <div *ngFor="let card of cards"
-           (click)="selectCard(card)"
-           class="p-4 rounded-lg border-2 cursor-pointer transition hover:shadow-lg"
-           [class.border-blue-600]="selectedCard?._id === card._id"
-           [class.border-gray-200]="selectedCard?._id !== card._id"
-           [class.bg-blue-50]="selectedCard?._id === card._id">
-        <h3 class="font-bold text-gray-900">{{ card.alias }}</h3>
-        <p class="text-sm text-gray-600">{{ card.maskedNumber }}</p>
-        <p class="text-sm text-gray-600 mt-2">Límite: {{ formatCurrency(card.creditLimitCents) }}</p>
-        <p class="text-lg font-bold text-red-600 mt-3">{{ formatCurrency(card.totalBalanceCents) }}</p>
-        <p class="text-xs text-gray-500">Disponible: {{ formatCurrency(card.availableCreditCents) }}</p>
-      </div>
-    </div>
-
-    <!-- Selected Card Details -->
-    <div *ngIf="selectedCard" class="mt-8 pt-8 border-t">
-      <h3 class="text-2xl font-bold text-gray-900 mb-6">{{ selectedCard.alias }}</h3>
-
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div class="bg-gray-50 p-4 rounded">
-          <p class="text-sm text-gray-600">Límite</p>
-          <p class="text-lg font-bold">{{ formatCurrency(selectedCard.creditLimitCents) }}</p>
-        </div>
-        <div class="bg-gray-50 p-4 rounded">
-          <p class="text-sm text-gray-600">Balance</p>
-          <p class="text-lg font-bold text-red-600">{{ formatCurrency(selectedCard.totalBalanceCents) }}</p>
-        </div>
-        <div class="bg-gray-50 p-4 rounded">
-          <p class="text-sm text-gray-600">Disponible</p>
-          <p class="text-lg font-bold text-green-600">{{ formatCurrency(selectedCard.availableCreditCents) }}</p>
-        </div>
-        <div class="bg-gray-50 p-4 rounded">
-          <p class="text-sm text-gray-600">Cortes</p>
-          <p class="text-lg font-bold">{{ selectedCard.statementCycles.length }}</p>
-        </div>
+      <div *ngIf="cards.length === 0" class="text-center text-gray-400 py-8">
+        No hay tarjetas registradas. Crea tu primera tarjeta.
       </div>
 
-      <!-- Statement Cycles -->
-      <h4 class="text-lg font-bold text-gray-900 mb-4">Cortes de Estado</h4>
-      <div class="space-y-3">
-        <div *ngFor="let corte of selectedCard.statementCycles"
-             (click)="selectCorte(corte)"
-             class="p-4 rounded border-2 cursor-pointer"
-             [class.border-blue-600]="selectedCorte?._id === corte._id"
-             [class.border-gray-200]="selectedCorte?._id !== corte._id">
-          <div class="flex justify-between items-center">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div *ngFor="let card of cards"
+             (click)="selectCard(card)"
+             class="relative p-4 rounded-xl border-2 cursor-pointer transition hover:shadow-md"
+             [class.border-blue-500]="selectedCard?._id === card._id"
+             [class.bg-blue-50]="selectedCard?._id === card._id"
+             [class.border-gray-200]="selectedCard?._id !== card._id">
+          <!-- Issuer + alias -->
+          <div class="flex justify-between items-start mb-2">
             <div>
-              <p class="font-bold">Corte #{{ corte.cycleNumber }} (Cutoff {{ corte.cutoffDay }})</p>
-              <p class="text-sm text-gray-600">{{ corte.openingDate | date: 'short' }} - {{ corte.closingDate | date: 'short' }}</p>
+              <p class="font-bold text-gray-900 text-sm">{{ card.alias }}</p>
+              <p class="text-xs text-gray-500">{{ card.issuer }} · {{ card.maskedNumber }}</p>
             </div>
-            <div class="text-right">
-              <p class="font-bold" [class.text-red-600]="corte.balanceCents > 0">{{ formatCurrency(corte.balanceCents) }}</p>
-              <p class="text-xs" [ngClass]="getStatusColor(corte.status)">{{ getStatusLabel(corte.status) }}</p>
+            <span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Corte día {{ card.cutoffDay }}</span>
+          </div>
+          <!-- Balances -->
+          <p class="text-xl font-bold text-red-600 mt-2">{{ formatCurrency(card.totalBalanceCents) }}</p>
+          <div class="flex justify-between text-xs text-gray-500 mt-1">
+            <span>Límite: {{ formatCurrency(card.creditLimitCents) }}</span>
+            <span class="text-green-600">Disp: {{ formatCurrency(card.availableCreditCents) }}</span>
+          </div>
+          <!-- EF badge -->
+          <div *ngIf="card.extraFinancings && card.extraFinancings.length > 0"
+               class="mt-2 text-xs text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full inline-block">
+            {{ card.extraFinancings.length }} extrafinanciamiento(s)
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Selected Card Detail -->
+    <div *ngIf="selectedCard" class="space-y-6">
+
+      <!-- Card Header Actions -->
+      <div class="bg-white rounded-xl shadow-sm border p-5">
+        <div class="flex justify-between items-center mb-4">
+          <div>
+            <h3 class="text-xl font-bold text-gray-900">{{ selectedCard.alias }}</h3>
+            <p class="text-sm text-gray-500">{{ selectedCard.issuer }} · Titular: {{ selectedCard.holderName }}</p>
+            <p class="text-xs text-gray-400 mt-1">
+              Corte día {{ selectedCard.cutoffDay }} · Vence día {{ selectedCard.paymentDueDay }}
+            </p>
+          </div>
+          <div class="flex gap-2">
+            <button *ngIf="getOpenCorte()"
+                    (click)="closeCorte()"
+                    class="px-3 py-1.5 text-sm border border-yellow-400 text-yellow-700 rounded-lg hover:bg-yellow-50 transition">
+              Cerrar Corte
+            </button>
+            <button (click)="openExtraFinanciamientoDialog()"
+                    class="px-3 py-1.5 text-sm border border-purple-400 text-purple-700 rounded-lg hover:bg-purple-50 transition">
+              + Cuota
+            </button>
+            <button (click)="deleteCard()"
+                    class="px-3 py-1.5 text-sm border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition">
+              Eliminar
+            </button>
+          </div>
+        </div>
+
+        <!-- Summary stats -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div class="bg-gray-50 p-3 rounded-lg text-center">
+            <p class="text-xs text-gray-500">Límite</p>
+            <p class="font-bold text-gray-900">{{ formatCurrency(selectedCard.creditLimitCents) }}</p>
+          </div>
+          <div class="bg-red-50 p-3 rounded-lg text-center">
+            <p class="text-xs text-gray-500">Balance</p>
+            <p class="font-bold text-red-600">{{ formatCurrency(selectedCard.totalBalanceCents) }}</p>
+          </div>
+          <div class="bg-green-50 p-3 rounded-lg text-center">
+            <p class="text-xs text-gray-500">Disponible</p>
+            <p class="font-bold text-green-600">{{ formatCurrency(selectedCard.availableCreditCents) }}</p>
+          </div>
+          <div class="bg-blue-50 p-3 rounded-lg text-center">
+            <p class="text-xs text-gray-500">Cortes</p>
+            <p class="font-bold text-blue-600">{{ selectedCard.statementCycles.length }}</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== EXTRAFINANCIAMIENTOS ==================== -->
+      <div *ngIf="getAllEFs().length > 0" class="bg-white rounded-xl shadow-sm border p-5">
+        <h4 class="text-base font-bold text-gray-900 mb-4">Compras a Cuotas (Extrafinanciamientos)</h4>
+
+        <div class="space-y-3">
+          <div *ngFor="let ef of getAllEFs()"
+               class="p-4 rounded-lg border"
+               [class.border-purple-200]="ef.status === 'active'"
+               [class.bg-purple-50]="ef.status === 'active'"
+               [class.border-gray-200]="ef.status !== 'active'"
+               [class.bg-gray-50]="ef.status !== 'active'">
+
+            <div class="flex justify-between items-start">
+              <div class="flex-1">
+                <div class="flex items-center gap-2 mb-1">
+                  <p class="font-semibold text-gray-900">{{ ef.description }}</p>
+                  <span class="text-xs px-2 py-0.5 rounded-full"
+                        [class.bg-purple-100]="ef.status === 'active'"
+                        [class.text-purple-700]="ef.status === 'active'"
+                        [class.bg-gray-200]="ef.status !== 'active'"
+                        [class.text-gray-600]="ef.status !== 'active'">
+                    {{ ef.status === 'active' ? 'Activo' : 'Completado' }}
+                  </span>
+                </div>
+                <p class="text-xs text-gray-500">Categoría: {{ getCategoryName(ef.categoryId) }}</p>
+              </div>
+              <div class="text-right ml-4">
+                <p class="font-bold text-gray-900">{{ formatCurrency(ef.monthlyAmountCents) }}/mes</p>
+                <p class="text-xs text-gray-500">Total: {{ formatCurrency(ef.totalAmountCents) }}</p>
+              </div>
+            </div>
+
+            <!-- Progress bar -->
+            <div class="mt-3">
+              <div class="flex justify-between text-xs text-gray-600 mb-1">
+                <span>{{ ef.paidInstallments }} de {{ ef.totalInstallments }} cuotas pagadas</span>
+                <span>Faltan {{ getEFRemaining(ef) }} cuotas</span>
+              </div>
+              <div class="w-full bg-gray-200 rounded-full h-2">
+                <div class="h-2 rounded-full transition-all"
+                     [class.bg-purple-500]="ef.status === 'active'"
+                     [class.bg-gray-400]="ef.status !== 'active'"
+                     [style.width.%]="getEFProgress(ef)">
+                </div>
+              </div>
+              <p class="text-xs text-gray-500 mt-1">
+                Saldo restante: {{ formatCurrency((ef.totalInstallments - ef.paidInstallments) * ef.monthlyAmountCents) }}
+              </p>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Corte Details -->
-      <div *ngIf="selectedCorte" class="mt-8 pt-8 border-t">
-        <div class="flex justify-between items-center mb-4">
-          <h4 class="text-lg font-bold">Cargos</h4>
-          <button *ngIf="selectedCorte.status === 'open'"
-                  (click)="openAddChargeDialog()"
-                  class="bg-blue-600 text-white px-3 py-1 rounded text-sm">
-            + Cargo
-          </button>
+      <!-- ==================== CORTES ==================== -->
+      <div class="bg-white rounded-xl shadow-sm border p-5">
+        <h4 class="text-base font-bold text-gray-900 mb-4">Cortes de Estado</h4>
+
+        <div class="space-y-2">
+          <div *ngFor="let corte of getSortedCortes()"
+               (click)="selectCorte(corte)"
+               class="p-4 rounded-xl border-2 cursor-pointer transition"
+               [class.border-blue-500]="selectedCorte?._id === corte._id"
+               [class.bg-blue-50]="selectedCorte?._id === corte._id"
+               [class.border-gray-200]="selectedCorte?._id !== corte._id"
+               [class.hover:bg-gray-50]="selectedCorte?._id !== corte._id">
+
+            <div class="flex justify-between items-start">
+              <div>
+                <div class="flex items-center gap-2 mb-1">
+                  <p class="font-bold text-gray-900">Corte #{{ corte.cycleNumber }}</p>
+                  <span class="text-xs px-2 py-0.5 rounded-full font-medium" [ngClass]="getStatusBadge(corte.status)">
+                    {{ getStatusLabel(corte.status) }}
+                  </span>
+                </div>
+                <p class="text-xs text-gray-500">{{ formatDate(corte.openingDate) }} → {{ formatDate(corte.closingDate) }}</p>
+                <p class="text-xs text-gray-400 mt-0.5">Vence: {{ formatDate(corte.paymentDueDate) }}</p>
+              </div>
+              <div class="text-right">
+                <p class="font-bold text-lg" [class.text-red-600]="corte.balanceCents > 0" [class.text-green-600]="corte.balanceCents <= 0">
+                  {{ formatCurrency(corte.balanceCents) }}
+                </p>
+                <p class="text-xs text-gray-400">{{ corte.charges.length }} cargo(s)</p>
+              </div>
+            </div>
+          </div>
         </div>
+      </div>
 
-        <table *ngIf="selectedCorte.charges.length > 0" class="w-full mb-6 text-sm">
-          <thead>
-            <tr class="border-b">
-              <th class="text-left p-2">Descripción</th>
-              <th class="text-right p-2">Monto</th>
-              <th class="text-right p-2">Fecha</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr *ngFor="let charge of selectedCorte.charges" class="border-b">
-              <td class="p-2">{{ charge.description }}</td>
-              <td class="text-right p-2">{{ formatCurrency(charge.amountCents) }}</td>
-              <td class="text-right p-2">{{ charge.date | date: 'short' }}</td>
-            </tr>
-          </tbody>
-        </table>
+      <!-- ==================== CORTE DETAIL ==================== -->
+      <div *ngIf="selectedCorte" class="bg-white rounded-xl shadow-sm border p-5">
 
-        <div class="flex justify-between items-center mb-6 border-t pt-2 font-bold">
-          <span>Total Cargos:</span>
-          <span>{{ formatCurrency(selectedCorte.chargesTotal) }}</span>
-        </div>
-
-        <div class="flex justify-between items-center">
-          <h4 class="text-lg font-bold">Pagos</h4>
-          <button *ngIf="selectedCorte.status === 'open'"
-                  (click)="openPaymentDialog()"
-                  class="bg-green-600 text-white px-3 py-1 rounded text-sm">
-            + Pago
-          </button>
-        </div>
-
-        <table *ngIf="selectedCorte.payments.length > 0" class="w-full my-4 text-sm">
-          <thead>
-            <tr class="border-b">
-              <th class="text-left p-2">Monto</th>
-              <th class="text-right p-2">Fecha</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr *ngFor="let payment of selectedCorte.payments" class="border-b">
-              <td class="p-2 text-green-600 font-bold">{{ formatCurrency(payment.amountCents) }}</td>
-              <td class="text-right p-2">{{ payment.date | date: 'short' }}</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div class="flex justify-between items-center border-t pt-2 font-bold mb-6">
-          <span>Total Pagos:</span>
-          <span>{{ formatCurrency(selectedCorte.paymentsTotal) }}</span>
-        </div>
-
-        <div class="bg-blue-100 p-4 rounded border-2 border-blue-300">
-          <div class="flex justify-between text-lg font-bold">
-            <span>Balance:</span>
-            <span [class.text-red-600]="selectedCorte.balanceCents > 0" [class.text-green-600]="selectedCorte.balanceCents <= 0">
-              {{ formatCurrency(selectedCorte.balanceCents) }}
+        <!-- Corte detail header -->
+        <div class="flex justify-between items-center mb-5">
+          <div>
+            <h4 class="text-lg font-bold text-gray-900">Corte #{{ selectedCorte.cycleNumber }}</h4>
+            <p class="text-sm text-gray-500">{{ formatDate(selectedCorte.openingDate) }} al {{ formatDate(selectedCorte.closingDate) }}</p>
+            <p class="text-xs text-gray-400">Vence: <strong>{{ formatDate(selectedCorte.paymentDueDate) }}</strong></p>
+          </div>
+          <div class="flex gap-2">
+            <button *ngIf="selectedCorte.status === 'open'"
+                    (click)="openAddChargeDialog()"
+                    class="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+              + Cargo
+            </button>
+            <button *ngIf="selectedCorte.status !== 'paid'"
+                    (click)="openPayCorteDialog()"
+                    class="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700">
+              Pagar Corte
+            </button>
+            <span *ngIf="selectedCorte.status === 'paid'"
+                  class="px-3 py-1.5 text-sm bg-gray-100 text-gray-500 rounded-lg">
+              ✓ Pagado {{ formatDate(selectedCorte.paidAt) }}
             </span>
           </div>
         </div>
+
+        <!-- Charges table -->
+        <div class="mb-6">
+          <h5 class="font-semibold text-gray-700 mb-3">Cargos</h5>
+          <div *ngIf="selectedCorte.charges.length === 0" class="text-gray-400 text-sm text-center py-4 bg-gray-50 rounded-lg">
+            Sin cargos en este corte
+          </div>
+          <table *ngIf="selectedCorte.charges.length > 0" class="w-full text-sm">
+            <thead>
+              <tr class="border-b text-gray-500">
+                <th class="text-left py-2 font-medium">Descripción</th>
+                <th class="text-left py-2 font-medium">Categoría</th>
+                <th class="text-right py-2 font-medium">Monto</th>
+                <th class="text-right py-2 font-medium">Fecha</th>
+                <th class="py-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let charge of selectedCorte.charges" class="border-b hover:bg-gray-50">
+                <td class="py-2 pr-2">
+                  <div class="flex items-center gap-1">
+                    <span *ngIf="charge.extraFinancingId" class="text-purple-500 text-xs">⟳</span>
+                    {{ charge.description }}
+                  </div>
+                </td>
+                <td class="py-2 pr-2 text-gray-500 text-xs">{{ getCategoryName(charge.categoryId) }}</td>
+                <td class="text-right py-2 font-medium">{{ formatCurrency(charge.amountCents) }}</td>
+                <td class="text-right py-2 text-gray-500">{{ formatDate(charge.date) }}</td>
+                <td class="text-right py-2">
+                  <button *ngIf="selectedCorte?.status !== 'paid' && !charge.extraFinancingId"
+                          (click)="deleteCharge(charge._id)"
+                          class="text-red-400 hover:text-red-600 text-xs px-1">✕</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="flex justify-between font-bold pt-2 border-t mt-1">
+            <span class="text-gray-700">Total Cargos</span>
+            <span>{{ formatCurrency(selectedCorte.chargesTotal) }}</span>
+          </div>
+        </div>
+
+        <!-- Payments table -->
+        <div class="mb-6">
+          <h5 class="font-semibold text-gray-700 mb-3">Pagos Registrados</h5>
+          <div *ngIf="selectedCorte.payments.length === 0" class="text-gray-400 text-sm text-center py-4 bg-gray-50 rounded-lg">
+            Sin pagos en este corte
+          </div>
+          <table *ngIf="selectedCorte.payments.length > 0" class="w-full text-sm">
+            <thead>
+              <tr class="border-b text-gray-500">
+                <th class="text-left py-2 font-medium">Monto</th>
+                <th class="text-left py-2 font-medium">Nota</th>
+                <th class="text-right py-2 font-medium">Fecha</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let payment of selectedCorte.payments" class="border-b">
+                <td class="py-2 text-green-600 font-bold">{{ formatCurrency(payment.amountCents) }}</td>
+                <td class="py-2 text-gray-500 text-xs">{{ payment.note || '—' }}</td>
+                <td class="text-right py-2 text-gray-500">{{ formatDate(payment.date) }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="flex justify-between font-bold pt-2 border-t mt-1">
+            <span class="text-gray-700">Total Pagos</span>
+            <span class="text-green-600">{{ formatCurrency(selectedCorte.paymentsTotal) }}</span>
+          </div>
+        </div>
+
+        <!-- Balance summary -->
+        <div class="p-4 rounded-xl border-2"
+             [class.border-red-300]="selectedCorte.balanceCents > 0"
+             [class.bg-red-50]="selectedCorte.balanceCents > 0"
+             [class.border-green-300]="selectedCorte.balanceCents <= 0"
+             [class.bg-green-50]="selectedCorte.balanceCents <= 0">
+          <div class="flex justify-between text-xl font-bold">
+            <span>Balance del Corte</span>
+            <span [class.text-red-600]="selectedCorte.balanceCents > 0"
+                  [class.text-green-600]="selectedCorte.balanceCents <= 0">
+              {{ formatCurrency(selectedCorte.balanceCents) }}
+            </span>
+          </div>
+          <p *ngIf="selectedCorte.status === 'paid'" class="text-sm text-green-600 mt-1">
+            ✓ Pagado el {{ formatDate(selectedCorte.paidAt) }}
+          </p>
+        </div>
+      </div>
+
+    </div><!-- end selected card -->
+  </div><!-- end !loading -->
+
+</div><!-- end main container -->
+
+
+<!-- ==================== MODALS ==================== -->
+
+<!-- Add Card Modal -->
+<div *ngIf="showAddCardDialog" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md">
+    <h3 class="text-xl font-bold text-gray-900 mb-5">Nueva Tarjeta</h3>
+    <form [formGroup]="cardForm" (ngSubmit)="createCard()" class="space-y-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Alias *</label>
+        <input formControlName="alias" type="text" placeholder="Ej: G&T Continental"
+               class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Emisor (Banco) *</label>
+        <input formControlName="issuer" type="text" placeholder="Ej: Banco G&T Continental"
+               class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Número (últimos 4) *</label>
+        <input formControlName="maskedNumber" type="text" placeholder="**** **** **** 1234"
+               class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Titular *</label>
+        <input formControlName="holderName" type="text" placeholder="Nombre completo"
+               class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Límite de crédito (Q) *</label>
+        <input formControlName="creditLimitCents" type="number" step="0.01" placeholder="Ej: 10000"
+               class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Día de corte * <span class="text-gray-400">(1-31)</span></label>
+          <input formControlName="cutoffDay" type="number" min="1" max="31"
+                 class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+          <p class="text-xs text-gray-400 mt-1">Ej: 15 = corte cada día 15</p>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Día de pago * <span class="text-gray-400">(1-31)</span></label>
+          <input formControlName="paymentDueDay" type="number" min="1" max="31"
+                 class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+          <p class="text-xs text-gray-400 mt-1">Ej: 10 = vence el día 10</p>
+        </div>
+      </div>
+      <div class="flex gap-3 pt-2">
+        <button type="button" (click)="closeAddCardDialog()"
+                class="flex-1 px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">Cancelar</button>
+        <button type="submit" [disabled]="!cardForm.valid"
+                class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50">
+          Crear Tarjeta
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Add Charge Modal -->
+<div *ngIf="showAddChargeDialog" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md">
+    <h3 class="text-xl font-bold text-gray-900 mb-5">Registrar Cargo</h3>
+    <form [formGroup]="chargeForm" (ngSubmit)="addCharge()" class="space-y-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Descripción *</label>
+        <input formControlName="description" type="text" placeholder="Ej: Supermercado"
+               class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Monto (Q) *</label>
+        <input formControlName="amountCents" type="number" step="0.01" placeholder="0.00"
+               class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Categoría *</label>
+        <select formControlName="categoryId"
+                class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+          <option value="">-- Selecciona categoría --</option>
+          <option *ngFor="let cat of categories" [value]="cat._id">{{ cat.name }}</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Fecha</label>
+        <input formControlName="date" type="date"
+               class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Nota</label>
+        <input formControlName="note" type="text" placeholder="Opcional"
+               class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+      </div>
+      <div class="flex gap-3 pt-2">
+        <button type="button" (click)="closeAddChargeDialog()"
+                class="flex-1 px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">Cancelar</button>
+        <button type="submit" [disabled]="!chargeForm.valid"
+                class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50">
+          Agregar Cargo
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ExtraFinanciamiento Modal -->
+<div *ngIf="showExtraFinanciamientoDialog" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md max-h-screen overflow-y-auto">
+    <h3 class="text-xl font-bold text-gray-900 mb-1">Registrar Compra a Cuotas</h3>
+    <p class="text-sm text-gray-500 mb-5">
+      Si ya llevas cuotas pagadas, indícalo abajo. La próxima cuota pendiente se aplicará al corte abierto.
+    </p>
+    <form [formGroup]="efForm" (ngSubmit)="createExtraFinanciamiento()" class="space-y-3">
+
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Descripción *</label>
+        <input formControlName="description" type="text" placeholder="Ej: Laptop Dell, TV Samsung…"
+               class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none" />
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Monto total (Q) *</label>
+          <input formControlName="totalAmountCents" type="number" step="0.01" placeholder="0.00"
+                 class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Total de cuotas *</label>
+          <input formControlName="totalInstallments" type="number" min="1" placeholder="18"
+                 class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none" />
+        </div>
+      </div>
+
+      <!-- Cuotas ya pagadas -->
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">
+          Cuotas ya pagadas
+          <span class="text-gray-400 font-normal ml-1">(0 si es nueva, o el número que ya llevas)</span>
+        </label>
+        <input formControlName="paidInstallments" type="number" min="0"
+               [max]="(efForm.value.totalInstallments || 1) - 1"
+               placeholder="0"
+               class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none" />
+      </div>
+
+      <!-- Preview inteligente -->
+      <div *ngIf="efForm.value.totalAmountCents > 0 && efForm.value.totalInstallments > 0"
+           class="bg-purple-50 border border-purple-200 rounded-xl p-4 space-y-2">
+        <div class="flex justify-between items-center">
+          <span class="text-xs text-purple-600">Cuota mensual</span>
+          <span class="text-lg font-bold text-purple-700">{{ efMonthlyPreview }}</span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-xs text-purple-600">Cuotas restantes</span>
+          <span class="font-semibold text-purple-700">{{ efRemainingInstallments }} de {{ efForm.value.totalInstallments }}</span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-xs text-purple-600">Saldo pendiente</span>
+          <span class="font-semibold text-purple-700">{{ efRemainingAmount }}</span>
+        </div>
+        <div class="pt-1 border-t border-purple-200">
+          <p class="text-xs text-purple-700 font-medium">
+            → Se aplicará la <strong>Cuota #{{ efNextInstallmentNumber }}</strong> al corte abierto actual
+          </p>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Categoría *</label>
+        <select formControlName="categoryId"
+                class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none bg-white">
+          <option value="">-- Selecciona categoría --</option>
+          <option *ngFor="let cat of categories" [value]="cat._id">{{ cat.name }}</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Nota</label>
+        <input formControlName="note" type="text" placeholder="Opcional"
+               class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none" />
+      </div>
+
+      <div class="flex gap-3 pt-2">
+        <button type="button" (click)="closeExtraFinanciamientoDialog()"
+                class="flex-1 px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">Cancelar</button>
+        <button type="submit" [disabled]="!efForm.valid"
+                class="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700 disabled:opacity-50">
+          Registrar
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Pay Corte Modal -->
+<div *ngIf="showPayCorteDialog && selectedCorte" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md">
+    <h3 class="text-xl font-bold text-gray-900 mb-1">Pagar Corte #{{ selectedCorte.cycleNumber }}</h3>
+    <p class="text-sm text-gray-500 mb-4">
+      Se generarán movimientos de gasto por categoría y se deducirá de tu cuenta seleccionada.
+    </p>
+
+    <!-- Balance to pay -->
+    <div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-5">
+      <p class="text-sm text-gray-600">Total a pagar</p>
+      <p class="text-3xl font-bold text-red-600">{{ formatCurrency(selectedCorte.balanceCents) }}</p>
+    </div>
+
+    <!-- Category breakdown -->
+    <div *ngIf="selectedCorte.charges.length > 0" class="mb-5">
+      <p class="text-xs font-semibold text-gray-600 mb-2">DESGLOSE POR CATEGORÍA</p>
+      <div class="space-y-1 max-h-36 overflow-y-auto">
+        <div *ngFor="let charge of selectedCorte.charges"
+             class="flex justify-between text-sm text-gray-700 py-0.5">
+          <span class="truncate mr-2">{{ charge.description }}</span>
+          <span class="font-medium flex-shrink-0">{{ formatCurrency(charge.amountCents) }}</span>
+        </div>
       </div>
     </div>
-  </div>
 
-  <!-- Add Card Dialog -->
-  <div *ngIf="showAddCardDialog" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
-      <h3 class="text-xl font-bold text-gray-900 mb-4">Nueva Tarjeta</h3>
-      <form [formGroup]="cardForm" (ngSubmit)="createCard()" class="space-y-4">
-        <input formControlName="alias" type="text" placeholder="Alias" class="w-full px-3 py-2 border rounded" />
-        <input formControlName="issuer" type="text" placeholder="Emisor" class="w-full px-3 py-2 border rounded" />
-        <input formControlName="maskedNumber" type="text" placeholder="Número" class="w-full px-3 py-2 border rounded" />
-        <input formControlName="holderName" type="text" placeholder="Titular" class="w-full px-3 py-2 border rounded" />
-        <input formControlName="creditLimitCents" type="number" placeholder="Límite (Q)" class="w-full px-3 py-2 border rounded" />
-        <div class="flex gap-3">
-          <button type="button" (click)="closeAddCardDialog()" class="flex-1 px-4 py-2 border rounded">Cancelar</button>
-          <button type="submit" [disabled]="!cardForm.valid" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded">Crear</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- Add Charge Dialog -->
-  <div *ngIf="showAddChargeDialog" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
-      <h3 class="text-xl font-bold text-gray-900 mb-4">Registrar Cargo</h3>
-      <form [formGroup]="chargeForm" (ngSubmit)="addCharge()" class="space-y-4">
-        <input formControlName="description" type="text" placeholder="Descripción" class="w-full px-3 py-2 border rounded" />
-        <input formControlName="amountCents" type="number" step="0.01" placeholder="Monto (Q)" class="w-full px-3 py-2 border rounded" />
-        <input formControlName="date" type="date" class="w-full px-3 py-2 border rounded" />
-        <input formControlName="note" type="text" placeholder="Nota" class="w-full px-3 py-2 border rounded" />
-        <div class="flex gap-3">
-          <button type="button" (click)="closeAddChargeDialog()" class="flex-1 px-4 py-2 border rounded">Cancelar</button>
-          <button type="submit" [disabled]="!chargeForm.valid" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded">Agregar</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- Payment Dialog -->
-  <div *ngIf="showPaymentDialog" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
-      <h3 class="text-xl font-bold text-gray-900 mb-4">Registrar Pago</h3>
-      <form [formGroup]="paymentForm" (ngSubmit)="recordPayment()" class="space-y-4">
-        <input formControlName="amountCents" type="number" step="0.01" placeholder="Monto (Q)" class="w-full px-3 py-2 border rounded" />
-        <select formControlName="accountId" class="w-full px-3 py-2 border rounded">
-          <option value="">Selecciona cuenta</option>
-          <option *ngFor="let account of accounts" [value]="account._id">{{ account.alias }}</option>
+    <form [formGroup]="payCorteForm" (ngSubmit)="payCorte()" class="space-y-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Pagar desde cuenta *</label>
+        <select formControlName="accountId"
+                class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-green-500 outline-none bg-white">
+          <option value="">-- Selecciona cuenta --</option>
+          <option *ngFor="let account of accounts" [value]="account._id">
+            {{ account.alias }} · {{ formatCurrency(account.currentBalanceCents) }}
+          </option>
         </select>
-        <input formControlName="date" type="date" class="w-full px-3 py-2 border rounded" />
-        <input formControlName="note" type="text" placeholder="Nota" class="w-full px-3 py-2 border rounded" />
-        <div class="flex gap-3">
-          <button type="button" (click)="closePaymentDialog()" class="flex-1 px-4 py-2 border rounded">Cancelar</button>
-          <button type="submit" [disabled]="!paymentForm.valid" class="flex-1 px-4 py-2 bg-green-600 text-white rounded">Registrar</button>
-        </div>
-      </form>
-    </div>
+      </div>
+      <div class="flex gap-3 pt-2">
+        <button type="button" (click)="closePayCorteDialog()"
+                class="flex-1 px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">Cancelar</button>
+        <button type="submit" [disabled]="!payCorteForm.valid"
+                class="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50">
+          Confirmar Pago
+        </button>
+      </div>
+    </form>
   </div>
 </div>

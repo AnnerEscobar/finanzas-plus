@@ -1,0 +1,219 @@
+<app-navbar></app-navbar>
+
+<div class="p-6 bg-gray-50 min-h-screen">
+  <!-- Header -->
+  <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-3">
+    <div>
+      <h1 class="text-3xl font-bold text-gray-900">Reportes</h1>
+      <p class="text-gray-600 mt-1">Análisis financiero detallado y exportación</p>
+    </div>
+    <div class="flex gap-2">
+      <button
+        (click)="downloadExcel()"
+        [disabled]="exporting"
+        class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition disabled:opacity-50 flex items-center gap-2"
+      >
+        <span>📊</span>
+        {{ exporting ? 'Exportando...' : 'Excel' }}
+      </button>
+      <button
+        (click)="downloadPdf()"
+        [disabled]="exporting"
+        class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition disabled:opacity-50 flex items-center gap-2"
+      >
+        <span>📄</span>
+        {{ exporting ? 'Exportando...' : 'PDF' }}
+      </button>
+    </div>
+  </div>
+
+  <!-- Error -->
+  <div *ngIf="error" class="mb-4 p-4 bg-red-100 text-red-700 rounded-lg">{{ error }}</div>
+
+  <!-- Period Selector -->
+  <div class="bg-white rounded-lg shadow p-4 mb-6 flex justify-between items-center">
+    <div>
+      <p class="text-xs text-gray-600">Período seleccionado</p>
+      <p class="text-lg font-bold">{{ getMonthLabel() }}</p>
+    </div>
+    <div class="flex gap-2">
+      <button (click)="changePeriod(-1)" class="px-3 py-1 border rounded hover:bg-gray-50">‹ Anterior</button>
+      <button (click)="changePeriod(1)" class="px-3 py-1 border rounded hover:bg-gray-50">Siguiente ›</button>
+    </div>
+  </div>
+
+  <!-- Overview Cards -->
+  <div *ngIf="overview" class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+    <div class="bg-green-50 border-2 border-green-200 p-4 rounded-lg">
+      <p class="text-xs text-green-700">Activos</p>
+      <p class="text-xl font-bold text-green-800">{{ overview.assets.formatted }}</p>
+    </div>
+    <div class="bg-blue-50 border-2 border-blue-200 p-4 rounded-lg">
+      <p class="text-xs text-blue-700">Fondos</p>
+      <p class="text-xl font-bold text-blue-800">{{ overview.funds.formatted }}</p>
+    </div>
+    <div class="bg-orange-50 border-2 border-orange-200 p-4 rounded-lg">
+      <p class="text-xs text-orange-700">Tarjetas</p>
+      <p class="text-xl font-bold text-orange-800">{{ overview.creditCardDebt.formatted }}</p>
+    </div>
+    <div class="bg-red-50 border-2 border-red-200 p-4 rounded-lg">
+      <p class="text-xs text-red-700">Deudas</p>
+      <p class="text-xl font-bold text-red-800">{{ overview.debt.formatted }}</p>
+    </div>
+    <div class="bg-purple-50 border-2 border-purple-300 p-4 rounded-lg">
+      <p class="text-xs text-purple-700">Patrimonio</p>
+      <p class="text-xl font-bold"
+         [class.text-green-700]="overview.netWorth.totalCents > 0"
+         [class.text-red-700]="overview.netWorth.totalCents < 0">
+        {{ overview.netWorth.formatted }}
+      </p>
+    </div>
+  </div>
+
+  <!-- Charts Grid -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <!-- Net Worth Evolution -->
+    <div class="bg-white rounded-lg shadow p-6">
+      <h2 class="text-lg font-bold text-gray-900 mb-4">Evolución del Patrimonio</h2>
+      <div *ngIf="hasNetWorthData()" class="h-64">
+        <canvas
+          baseChart
+          type="line"
+          [data]="netWorthChartData"
+          [options]="netWorthChartOptions"
+        ></canvas>
+      </div>
+      <div *ngIf="!hasNetWorthData()" class="h-64 flex items-center justify-center text-gray-400 text-sm text-center">
+        <div>
+          <p class="text-4xl mb-2">📈</p>
+          <p>Genera cierres mensuales para ver la evolución</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Debt Evolution -->
+    <div class="bg-white rounded-lg shadow p-6">
+      <h2 class="text-lg font-bold text-gray-900 mb-4">Evolución de Deuda</h2>
+      <div *ngIf="hasNetWorthData()" class="h-64">
+        <canvas
+          baseChart
+          type="line"
+          [data]="debtEvolutionChartData"
+          [options]="debtEvolutionChartOptions"
+        ></canvas>
+      </div>
+      <div *ngIf="!hasNetWorthData()" class="h-64 flex items-center justify-center text-gray-400 text-sm text-center">
+        <div>
+          <p class="text-4xl mb-2">📉</p>
+          <p>Genera cierres mensuales para ver la evolución</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Income vs Expense -->
+    <div class="bg-white rounded-lg shadow p-6">
+      <h2 class="text-lg font-bold text-gray-900 mb-4">Ingresos vs Gastos (últimos 6 meses)</h2>
+      <div class="h-64">
+        <canvas
+          baseChart
+          type="bar"
+          [data]="incomeVsExpenseChartData"
+          [options]="incomeVsExpenseChartOptions"
+        ></canvas>
+      </div>
+    </div>
+
+    <!-- Expense by Category -->
+    <div class="bg-white rounded-lg shadow p-6">
+      <h2 class="text-lg font-bold text-gray-900 mb-4">Gastos por Categoría - {{ getMonthLabel() }}</h2>
+      <div *ngIf="hasExpenseData()" class="h-64">
+        <canvas
+          baseChart
+          type="doughnut"
+          [data]="expenseByCategoryChartData"
+          [options]="expenseByCategoryChartOptions"
+        ></canvas>
+      </div>
+      <div *ngIf="!hasExpenseData()" class="h-64 flex items-center justify-center text-gray-400 text-sm text-center">
+        <div>
+          <p class="text-4xl mb-2">🍽️</p>
+          <p>No hay gastos registrados en {{ getMonthLabel() }}</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Asset Distribution -->
+    <div class="bg-white rounded-lg shadow p-6">
+      <h2 class="text-lg font-bold text-gray-900 mb-4">Distribución de Activos</h2>
+      <div *ngIf="hasAssetData()" class="h-64">
+        <canvas
+          baseChart
+          type="pie"
+          [data]="assetDistributionChartData"
+          [options]="assetDistributionChartOptions"
+        ></canvas>
+      </div>
+      <div *ngIf="!hasAssetData()" class="h-64 flex items-center justify-center text-gray-400 text-sm text-center">
+        <div>
+          <p class="text-4xl mb-2">💰</p>
+          <p>No hay cuentas o fondos registrados</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Debt Distribution -->
+    <div class="bg-white rounded-lg shadow p-6">
+      <h2 class="text-lg font-bold text-gray-900 mb-4">Distribución de Deudas</h2>
+      <div *ngIf="hasDebtData()" class="h-64">
+        <canvas
+          baseChart
+          type="pie"
+          [data]="debtDistributionChartData"
+          [options]="debtDistributionChartOptions"
+        ></canvas>
+      </div>
+      <div *ngIf="!hasDebtData()" class="h-64 flex items-center justify-center text-gray-400 text-sm text-center">
+        <div>
+          <p class="text-4xl mb-2">🎉</p>
+          <p>¡Sin deudas registradas!</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top Expenses -->
+  <div *ngIf="topExpenses.length > 0" class="bg-white rounded-lg shadow p-6 mb-6">
+    <h2 class="text-lg font-bold text-gray-900 mb-4">Top 10 Gastos - {{ getMonthLabel() }}</h2>
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b text-left">
+          <th class="p-2">#</th>
+          <th class="p-2">Fecha</th>
+          <th class="p-2">Descripción</th>
+          <th class="p-2">Categoría</th>
+          <th class="p-2">Cuenta</th>
+          <th class="p-2 text-right">Monto</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let expense of topExpenses; let i = index" class="border-b hover:bg-gray-50">
+          <td class="p-2 font-bold text-gray-500">{{ i + 1 }}</td>
+          <td class="p-2 whitespace-nowrap">{{ expense.date | date: 'shortDate' }}</td>
+          <td class="p-2">{{ expense.note }}</td>
+          <td class="p-2 text-gray-600">{{ expense.category }}</td>
+          <td class="p-2 text-gray-600">{{ expense.account }}</td>
+          <td class="p-2 text-right font-bold text-red-600">{{ expense.amountFormatted }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Export Info -->
+  <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-900">
+    <p class="font-semibold mb-1">💾 Exportación de reportes</p>
+    <p>
+      Los reportes en <strong>Excel</strong> incluyen 6 hojas: Resumen, Cuentas, Tarjetas, Deudas, Fondos y Movimientos.
+      El reporte en <strong>PDF</strong> es un documento ejecutivo con todos los datos del período seleccionado.
+    </p>
+  </div>
+</div>

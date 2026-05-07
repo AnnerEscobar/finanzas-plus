@@ -8,8 +8,12 @@ async function bootstrap() {
   // Global API prefix
   app.setGlobalPrefix('api');
 
-  // CORS
-  app.enableCors();
+  // CORS — en producción usa la variable CORS_ORIGIN (puede ser lista separada por comas)
+  const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:4200';
+  app.enableCors({
+    origin: corsOrigin.split(',').map((s) => s.trim()),
+    credentials: true,
+  });
 
   // Validation
   app.useGlobalPipes(new ValidationPipe({
@@ -18,9 +22,10 @@ async function bootstrap() {
     transform: true,
   }));
 
-  const port = 9999;
+  // Railway asigna PORT dinámicamente; en local usamos 9999
+  const port = process.env.PORT || 9999;
   await app.listen(port, '0.0.0.0');
-  console.log(`Backend running on http://localhost:${port}/api`);
+  console.log(`Backend running on port ${port} | env: ${process.env.NODE_ENV || 'development'}`);
 }
 
 bootstrap().catch(err => {

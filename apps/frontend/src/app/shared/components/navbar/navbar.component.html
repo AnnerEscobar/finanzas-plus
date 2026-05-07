@@ -1,0 +1,88 @@
+<nav class="bg-white shadow-md sticky top-0 z-40">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="flex items-center justify-between h-16">
+      <!-- Logo + Back -->
+      <div class="flex items-center gap-3">
+        <button
+          (click)="goBack()"
+          class="p-2 rounded-lg hover:bg-gray-100 text-gray-600 transition"
+          title="Volver"
+          aria-label="Volver"
+        >
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+          </svg>
+        </button>
+        <a routerLink="/dashboard" class="text-xl font-bold text-gray-900 hover:text-blue-600 transition">
+          Finanzas+
+        </a>
+      </div>
+
+      <!-- Desktop nav -->
+      <div class="hidden lg:flex items-center gap-1">
+        <a
+          *ngFor="let item of navItems"
+          [routerLink]="item.route"
+          routerLinkActive="bg-blue-600 text-white"
+          [routerLinkActiveOptions]="{ exact: false }"
+          class="px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition"
+        >
+          {{ item.label }}
+        </a>
+      </div>
+
+      <!-- User + Logout -->
+      <div class="hidden md:flex items-center gap-3">
+        <span class="text-sm text-gray-600">
+          <span class="hidden lg:inline">Hola, </span>
+          <strong>{{ getCurrentUser() }}</strong>
+        </span>
+        <button
+          (click)="logout()"
+          class="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition"
+        >
+          Salir
+        </button>
+      </div>
+
+      <!-- Mobile menu button -->
+      <button
+        (click)="toggleMobileMenu()"
+        class="md:hidden p-2 rounded-lg hover:bg-gray-100 text-gray-600"
+        aria-label="Menú"
+      >
+        <svg *ngIf="!mobileMenuOpen" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+        </svg>
+        <svg *ngIf="mobileMenuOpen" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Mobile dropdown -->
+    <div *ngIf="mobileMenuOpen" class="md:hidden border-t pb-3">
+      <div class="pt-2 space-y-1">
+        <a
+          *ngFor="let item of navItems"
+          [routerLink]="item.route"
+          (click)="closeMobileMenu()"
+          routerLinkActive="bg-blue-600 text-white"
+          [routerLinkActiveOptions]="{ exact: false }"
+          class="block px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100"
+        >
+          <span class="mr-2">{{ item.icon }}</span>{{ item.label }}
+        </a>
+        <div class="border-t pt-2 mt-2">
+          <p class="px-3 py-1 text-xs text-gray-500">Sesión: {{ getCurrentUser() }}</p>
+          <button
+            (click)="logout(); closeMobileMenu()"
+            class="w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50"
+          >
+            Cerrar Sesión
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</nav>

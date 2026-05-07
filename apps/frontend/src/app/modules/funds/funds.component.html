@@ -1,0 +1,445 @@
+<app-navbar></app-navbar>
+
+<div class="p-6 bg-gray-50 min-h-screen">
+  <!-- Header -->
+  <div class="flex justify-between items-center mb-6">
+    <h1 class="text-3xl font-bold text-gray-900">Fondos de Retiro</h1>
+    <button
+      (click)="openAddFundDialog()"
+      class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition"
+    >
+      + Nuevo Fondo
+    </button>
+  </div>
+
+  <!-- Error -->
+  <div *ngIf="error" class="mb-6 p-4 bg-red-100 text-red-700 rounded-lg">
+    {{ error }}
+  </div>
+
+  <!-- Summary -->
+  <div *ngIf="summary" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="bg-white p-4 rounded-lg shadow">
+      <p class="text-sm text-gray-600">Total Acumulado</p>
+      <p class="text-2xl font-bold text-green-600">{{ summary.totalCurrentFormatted }}</p>
+    </div>
+    <div class="bg-white p-4 rounded-lg shadow">
+      <p class="text-sm text-gray-600">Meta Total</p>
+      <p class="text-2xl font-bold text-gray-900">{{ summary.totalTargetFormatted }}</p>
+    </div>
+    <div class="bg-white p-4 rounded-lg shadow">
+      <p class="text-sm text-gray-600">Aporte Mensual</p>
+      <p class="text-2xl font-bold text-blue-600">{{ summary.totalMonthlyContributionFormatted }}</p>
+    </div>
+    <div class="bg-white p-4 rounded-lg shadow">
+      <p class="text-sm text-gray-600">Proyección Total</p>
+      <p class="text-2xl font-bold text-purple-600">{{ summary.totalProjectedFormatted }}</p>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div *ngIf="loading" class="flex justify-center p-8">
+    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+  </div>
+
+  <!-- Empty -->
+  <div *ngIf="!loading && funds.length === 0" class="bg-white rounded-lg shadow p-12 text-center">
+    <p class="text-gray-500 text-lg mb-4">No hay fondos registrados</p>
+    <button (click)="openAddFundDialog()" class="bg-blue-600 text-white px-6 py-2 rounded-lg">
+      Crear primer fondo
+    </button>
+  </div>
+
+  <!-- Funds Grid -->
+  <div *ngIf="!loading && funds.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+    <div
+      *ngFor="let fund of funds"
+      (click)="selectFund(fund)"
+      class="bg-white p-5 rounded-lg shadow cursor-pointer transition border-2 hover:shadow-lg"
+      [class.border-blue-600]="selectedFund?._id === fund._id"
+      [class.border-transparent]="selectedFund?._id !== fund._id"
+    >
+      <div class="flex justify-between items-start mb-3">
+        <div>
+          <h3 class="font-bold text-gray-900">{{ fund.alias }}</h3>
+          <p class="text-sm text-gray-600">{{ fund.institution || getFundTypeLabel(fund.fundType) }}</p>
+        </div>
+        <span class="text-xs px-2 py-1 rounded" [ngClass]="getStatusColor(fund.status)">
+          {{ getStatusLabel(fund.status) }}
+        </span>
+      </div>
+
+      <p class="text-2xl font-bold text-green-600 mb-1">{{ formatCurrency(fund.currentAmountCents) }}</p>
+      <p *ngIf="fund.targetAmountCents > 0" class="text-xs text-gray-500 mb-3">
+        Meta: {{ formatCurrency(fund.targetAmountCents) }}
+      </p>
+
+      <!-- Progress -->
+      <div *ngIf="fund.targetAmountCents > 0" class="w-full bg-gray-200 rounded-full h-2 mb-2">
+        <div
+          class="bg-blue-500 h-2 rounded-full transition-all"
+          [style.width.%]="calculateProgress(fund)"
+        ></div>
+      </div>
+      <div class="flex justify-between text-xs text-gray-500">
+        <span *ngIf="fund.targetAmountCents > 0">{{ calculateProgress(fund) }}%</span>
+        <span *ngIf="fund.monthlyContributionCents > 0">
+          {{ formatCurrency(fund.monthlyContributionCents) }}/mes
+        </span>
+      </div>
+
+      <div *ngIf="fund.annualInterestRate > 0" class="mt-2 text-xs text-purple-600 font-semibold">
+        Interés: {{ fund.annualInterestRate }}% anual
+      </div>
+    </div>
+  </div>
+
+  <!-- Selected Fund Details -->
+  <div *ngIf="selectedFund" class="bg-white rounded-lg shadow-lg p-6">
+    <div class="flex justify-between items-start mb-6">
+      <div>
+        <h2 class="text-2xl font-bold text-gray-900">{{ selectedFund.alias }}</h2>
+        <p *ngIf="selectedFund.description" class="text-gray-600">{{ selectedFund.description }}</p>
+        <p *ngIf="selectedFund.institution" class="text-sm text-gray-500">{{ selectedFund.institution }}</p>
+        <span
+          class="inline-block mt-2 text-xs px-2 py-1 rounded"
+          [ngClass]="getStatusColor(selectedFund.status)"
+        >
+          {{ getStatusLabel(selectedFund.status) }}
+        </span>
+      </div>
+
+      <div class="flex gap-2">
+        <button
+          (click)="openEditFundDialog()"
+          class="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-50"
+        >
+          Editar
+        </button>
+        <button
+          (click)="deleteFund()"
+          class="px-3 py-1 border border-red-300 text-red-600 rounded text-sm hover:bg-red-50"
+        >
+          Eliminar
+        </button>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div class="bg-gray-50 p-3 rounded">
+        <p class="text-xs text-gray-600">Acumulado</p>
+        <p class="text-lg font-bold text-green-600">{{ formatCurrency(selectedFund.currentAmountCents) }}</p>
+      </div>
+      <div class="bg-gray-50 p-3 rounded">
+        <p class="text-xs text-gray-600">Meta</p>
+        <p class="text-lg font-bold">{{ formatCurrency(selectedFund.targetAmountCents) }}</p>
+      </div>
+      <div class="bg-gray-50 p-3 rounded">
+        <p class="text-xs text-gray-600">Aporte/mes</p>
+        <p class="text-lg font-bold text-blue-600">{{ formatCurrency(selectedFund.monthlyContributionCents) }}</p>
+      </div>
+      <div class="bg-gray-50 p-3 rounded">
+        <p class="text-xs text-gray-600">Interés</p>
+        <p class="text-lg font-bold text-purple-600">{{ selectedFund.annualInterestRate }}%</p>
+      </div>
+    </div>
+
+    <!-- Progress -->
+    <div *ngIf="selectedFund.targetAmountCents > 0" class="mb-6">
+      <div class="flex justify-between mb-1">
+        <span class="text-sm font-medium">Progreso a meta</span>
+        <span class="text-sm font-bold">{{ calculateProgress(selectedFund) }}%</span>
+      </div>
+      <div class="w-full bg-gray-200 rounded-full h-3">
+        <div
+          class="bg-blue-500 h-3 rounded-full transition-all duration-500"
+          [style.width.%]="calculateProgress(selectedFund)"
+        ></div>
+      </div>
+    </div>
+
+    <!-- Dates -->
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6 text-sm">
+      <div>
+        <span class="text-gray-600">Tipo:</span>
+        <strong class="ml-2">{{ getFundTypeLabel(selectedFund.fundType) }}</strong>
+      </div>
+      <div *ngIf="selectedFund.startDate">
+        <span class="text-gray-600">Inicio:</span>
+        <strong class="ml-2">{{ selectedFund.startDate | date: 'mediumDate' }}</strong>
+      </div>
+      <div *ngIf="selectedFund.targetDate">
+        <span class="text-gray-600">Vence:</span>
+        <strong class="ml-2">{{ selectedFund.targetDate | date: 'mediumDate' }}</strong>
+      </div>
+    </div>
+
+    <!-- Projection Card -->
+    <div *ngIf="selectedProjection && selectedProjection.monthsRemaining > 0"
+         class="bg-gradient-to-r from-purple-50 to-blue-50 border-2 border-purple-200 rounded-lg p-4 mb-6">
+      <h3 class="font-bold text-purple-900 mb-3">Proyección al vencimiento</h3>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div>
+          <p class="text-xs text-gray-600">Valor Proyectado</p>
+          <p class="text-xl font-bold text-purple-700">{{ selectedProjection.projectedValueFormatted }}</p>
+        </div>
+        <div>
+          <p class="text-xs text-gray-600">Aportes Restantes</p>
+          <p class="text-lg font-bold">{{ selectedProjection.totalContributionsFormatted }}</p>
+        </div>
+        <div>
+          <p class="text-xs text-gray-600">Interés Estimado</p>
+          <p class="text-lg font-bold text-green-600">{{ selectedProjection.estimatedInterestFormatted }}</p>
+        </div>
+        <div>
+          <p class="text-xs text-gray-600">Meses Restantes</p>
+          <p class="text-lg font-bold">{{ selectedProjection.monthsRemaining }}</p>
+        </div>
+      </div>
+    </div>
+
+    <div *ngIf="selectedFund.note" class="bg-yellow-50 border border-yellow-200 p-3 rounded mb-6 text-sm">
+      <strong>Nota:</strong> {{ selectedFund.note }}
+    </div>
+
+    <!-- Contributions -->
+    <div class="border-t pt-6">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-lg font-bold">Aportes ({{ selectedFund.contributions.length }})</h3>
+        <button
+          *ngIf="selectedFund.status === 'active'"
+          (click)="openAddContributionDialog()"
+          class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm"
+        >
+          + Aporte
+        </button>
+      </div>
+
+      <div *ngIf="selectedFund.contributions.length === 0" class="text-gray-500 text-center py-4 text-sm">
+        No hay aportes registrados
+      </div>
+
+      <table *ngIf="selectedFund.contributions.length > 0" class="w-full text-sm">
+        <thead>
+          <tr class="border-b text-left">
+            <th class="p-2">Fecha</th>
+            <th class="p-2 text-right">Monto</th>
+            <th class="p-2">Nota</th>
+            <th class="p-2"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let contribution of selectedFund.contributions" class="border-b hover:bg-gray-50">
+            <td class="p-2">{{ contribution.date | date: 'shortDate' }}</td>
+            <td class="p-2 text-right font-bold text-green-600">{{ formatCurrency(contribution.amountCents) }}</td>
+            <td class="p-2 text-gray-600">{{ contribution.note || '-' }}</td>
+            <td class="p-2 text-right">
+              <button (click)="deleteContribution(contribution._id)" class="text-red-600 text-xs hover:underline">
+                Eliminar
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Add Fund Dialog -->
+  <div *ngIf="showAddFundDialog" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <h3 class="text-xl font-bold mb-4">Nuevo Fondo</h3>
+      <form [formGroup]="fundForm" (ngSubmit)="createFund()" class="space-y-3">
+        <div>
+          <label class="block text-sm font-medium mb-1">Alias *</label>
+          <input formControlName="alias" type="text" placeholder="Ej: Fondo Banrural" class="w-full px-3 py-2 border rounded" />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium mb-1">Descripción</label>
+          <input formControlName="description" type="text" class="w-full px-3 py-2 border rounded" />
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium mb-1">Institución</label>
+            <input formControlName="institution" type="text" placeholder="Ej: Banrural" class="w-full px-3 py-2 border rounded" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Tipo</label>
+            <select formControlName="fundType" class="w-full px-3 py-2 border rounded">
+              <option value="retirement">Retiro</option>
+              <option value="emergency">Emergencia</option>
+              <option value="savings">Ahorro</option>
+              <option value="investment">Inversión</option>
+              <option value="other">Otro</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium mb-1">Saldo Actual (Q)</label>
+            <input formControlName="currentAmountCents" type="number" step="0.01" placeholder="0.00" class="w-full px-3 py-2 border rounded" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Meta (Q)</label>
+            <input formControlName="targetAmountCents" type="number" step="0.01" placeholder="0.00" class="w-full px-3 py-2 border rounded" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium mb-1">Aporte Mensual (Q)</label>
+            <input formControlName="monthlyContributionCents" type="number" step="0.01" placeholder="0.00" class="w-full px-3 py-2 border rounded" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Interés Anual (%)</label>
+            <input formControlName="annualInterestRate" type="number" step="0.01" placeholder="0" class="w-full px-3 py-2 border rounded" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium mb-1">Fecha Inicio</label>
+            <input formControlName="startDate" type="date" class="w-full px-3 py-2 border rounded" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Fecha Vencimiento</label>
+            <input formControlName="targetDate" type="date" class="w-full px-3 py-2 border rounded" />
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium mb-1">Nota</label>
+          <textarea formControlName="note" rows="2" class="w-full px-3 py-2 border rounded"></textarea>
+        </div>
+
+        <div class="flex gap-3 pt-2">
+          <button type="button" (click)="closeAddFundDialog()" class="flex-1 px-4 py-2 border rounded hover:bg-gray-50">
+            Cancelar
+          </button>
+          <button type="submit" [disabled]="!fundForm.valid || loading" class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50">
+            {{ loading ? 'Creando...' : 'Crear Fondo' }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Edit Fund Dialog -->
+  <div *ngIf="showEditFundDialog" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <h3 class="text-xl font-bold mb-4">Editar Fondo</h3>
+      <form [formGroup]="editForm" (ngSubmit)="updateFund()" class="space-y-3">
+        <div>
+          <label class="block text-sm font-medium mb-1">Alias *</label>
+          <input formControlName="alias" type="text" class="w-full px-3 py-2 border rounded" />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium mb-1">Descripción</label>
+          <input formControlName="description" type="text" class="w-full px-3 py-2 border rounded" />
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium mb-1">Institución</label>
+            <input formControlName="institution" type="text" class="w-full px-3 py-2 border rounded" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Tipo</label>
+            <select formControlName="fundType" class="w-full px-3 py-2 border rounded">
+              <option value="retirement">Retiro</option>
+              <option value="emergency">Emergencia</option>
+              <option value="savings">Ahorro</option>
+              <option value="investment">Inversión</option>
+              <option value="other">Otro</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium mb-1">Meta (Q)</label>
+            <input formControlName="targetAmountCents" type="number" step="0.01" class="w-full px-3 py-2 border rounded" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Aporte Mensual (Q)</label>
+            <input formControlName="monthlyContributionCents" type="number" step="0.01" class="w-full px-3 py-2 border rounded" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium mb-1">Interés Anual (%)</label>
+            <input formControlName="annualInterestRate" type="number" step="0.01" class="w-full px-3 py-2 border rounded" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Fecha Vencimiento</label>
+            <input formControlName="targetDate" type="date" class="w-full px-3 py-2 border rounded" />
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium mb-1">Nota</label>
+          <textarea formControlName="note" rows="2" class="w-full px-3 py-2 border rounded"></textarea>
+        </div>
+
+        <div class="flex gap-3 pt-2">
+          <button type="button" (click)="closeEditFundDialog()" class="flex-1 px-4 py-2 border rounded hover:bg-gray-50">
+            Cancelar
+          </button>
+          <button type="submit" [disabled]="!editForm.valid || loading" class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50">
+            {{ loading ? 'Guardando...' : 'Guardar' }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Add Contribution Dialog -->
+  <div *ngIf="showAddContributionDialog" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+      <h3 class="text-xl font-bold mb-4">Registrar Aporte</h3>
+      <p *ngIf="selectedFund" class="text-sm text-gray-600 mb-4">
+        Acumulado: <strong class="text-green-600">{{ formatCurrency(selectedFund.currentAmountCents) }}</strong>
+      </p>
+      <form [formGroup]="contributionForm" (ngSubmit)="addContribution()" class="space-y-3">
+        <div>
+          <label class="block text-sm font-medium mb-1">Monto (Q) *</label>
+          <input formControlName="amountCents" type="number" step="0.01" class="w-full px-3 py-2 border rounded" />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium mb-1">Fecha</label>
+          <input formControlName="date" type="date" class="w-full px-3 py-2 border rounded" />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium mb-1">Cuenta de Origen</label>
+          <select formControlName="accountId" class="w-full px-3 py-2 border rounded">
+            <option value="">Sin especificar</option>
+            <option *ngFor="let account of accounts" [value]="account._id">
+              {{ account.alias }}
+            </option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium mb-1">Nota</label>
+          <input formControlName="note" type="text" class="w-full px-3 py-2 border rounded" />
+        </div>
+
+        <div class="flex gap-3 pt-2">
+          <button type="button" (click)="closeAddContributionDialog()" class="flex-1 px-4 py-2 border rounded hover:bg-gray-50">
+            Cancelar
+          </button>
+          <button type="submit" [disabled]="!contributionForm.valid || loading" class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded disabled:opacity-50">
+            {{ loading ? 'Registrando...' : 'Registrar' }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

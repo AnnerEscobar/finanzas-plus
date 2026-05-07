@@ -7,11 +7,16 @@ import { NgChartsModule } from 'ng2-charts';
 import { ChartConfiguration, ChartData } from 'chart.js';
 import { AccountsService } from '../../core/services/accounts.service';
 import { AuthService } from '../../core/services/auth.service';
+import { DebtsService } from '../../core/services/debts.service';
+import { CreditCardsService } from '../../core/services/creditCards.service';
+import { FundsService } from '../../core/services/funds.service';
+import { ReportsService } from '../../core/services/reports.service';
+import { NavbarComponent } from '../../shared/components/navbar/navbar.component';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterLink, NgChartsModule],
+  imports: [CommonModule, RouterLink, NgChartsModule, NavbarComponent],
   templateUrl: './dashboard.component.html',
   styleUrls: ['./dashboard.component.css'],
 })
@@ -19,7 +24,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   // Dashboard metrics (RB-01)
   totalBalance: number = 0;
   blockedSavings: number = 0;
-  totalDebt: number = 0;
+  loanDebt: number = 0;         // préstamos y deudas formales
+  creditCardDebt: number = 0;   // saldo total de tarjetas de crédito
+  totalDebt: number = 0;        // loanDebt + creditCardDebt
   estimatedPatrimony: number = 0;
 
   // Loading states
@@ -128,11 +135,18 @@ export class DashboardComponent implements OnInit, OnDestroy {
   constructor(
     private accountsService: AccountsService,
     private authService: AuthService,
+    private debtsService: DebtsService,
+    private creditCardsService: CreditCardsService,
+    private fundsService: FundsService,
+    private reportsService: ReportsService,
     private router: Router,
   ) {}
 
   ngOnInit() {
-    this.loadDashboardData();
+    // Pequeño delay para asegurar que el token está disponible en localStorage
+    setTimeout(() => {
+      this.loadDashboardData();
+    }, 100);
   }
 
   ngOnDestroy() {
@@ -154,8 +168,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       .subscribe({
         next: (response: any) => {
           this.totalBalance = response.totalCents || 0;
-          // Calculate patrimony: available balance - debt + savings
-          this.estimatedPatrimony = this.totalBalance - this.totalDebt + this.blockedSavings;
+          this.recalculatePatrimony();
           this.loading = false;
         },
         error: (err) => {
@@ -165,8 +178,142 @@ export class DashboardComponent implements OnInit, OnDestroy {
         },
       });
 
-    // TODO: Load blocked savings and total debt from respective services
-    // For Sprint 1, these remain 0
+    // Préstamos / deudas formales
+    this.debtsService
+      .getTotalDebt()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (response: any) => {
+          this.loanDebt = response.totalCents || 0;
+          this.totalDebt = this.loanDebt + this.creditCardDebt;
+          this.recalculatePatrimony();
+        },
+        error: () => {
+          // Silent fail
+        },
+      });
+
+    // Saldo de tarjetas de crédito (también es deuda)
+    this.creditCardsService
+      .getTotalBalance()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (response: any) => {
+          this.creditCardDebt = response.totalCents || 0;
+          this.totalDebt = this.loanDebt + this.creditCardDebt;
+          this.recalculatePatrimony();
+        },
+        error: () => {
+          // Silent fail (sin tarjetas)
+        },
+      });
+
+    // Sprint 3: Load total saved (funds)
+    this.fundsService
+      .getTotalSaved()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (response: any) => {
+          this.blockedSavings = response.totalCents || 0;
+          this.recalculatePatrimony();
+        },
+        error: () => {
+          // Silent fail (no funds yet)
+        },
+      });
+
+    // Sprint 4: Cargar gráficas con datos reales
+    this.loadRealCharts();
+  }
+
+  /**
+   * Cargar gráficas reales (Sprint 4)
+   */
+  private loadRealCharts() {
+    // Net worth evolution
+    this.reportsService
+      .getNetWorthEvolution()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (data) => {
+          if (data.labels.length > 0) {
+            this.balanceTrendChartData = {
+              labels: data.labels,
+              datasets: [
+                {
+                  label: 'Patrimonio Neto',
+                  data: data.netWorth,
+                  borderColor: '#7C3AED',
+                  backgroundColor: 'rgba(124, 58, 237, 0.15)',
+                  fill: true,
+                  tension: 0.3,
+                },
+              ],
+            };
+          }
+        },
+      });
+
+    // Income vs Expense
+    this.reportsService
+      .getIncomeVsExpense(5)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (data) => {
+          if (data.labels.length > 0) {
+            this.incomeVsExpenseChartData = {
+              labels: data.labels,
+              datasets: [
+                {
+                  label: 'Ingresos',
+                  data: data.income,
+                  backgroundColor: '#10b981',
+                  borderRadius: 4,
+                },
+                {
+                  label: 'Gastos',
+                  data: data.expense,
+                  backgroundColor: '#ef4444',
+                  borderRadius: 4,
+                },
+              ],
+            };
+          }
+        },
+      });
+
+    // Expense by Category (current month)
+    this.reportsService
+      .getExpenseByCategory()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (data) => {
+          if (data.labels.length > 0) {
+            this.expenseByCategoryChartData = {
+              labels: data.labels,
+              datasets: [
+                {
+                  data: data.data,
+                  backgroundColor: [
+                    '#f87171', '#fbbf24', '#60a5fa', '#34d399',
+                    '#a78bfa', '#fb923c', '#22d3ee', '#84cc16',
+                    '#ec4899', '#06b6d4',
+                  ],
+                  borderColor: '#fff',
+                  borderWidth: 2,
+                },
+              ],
+            };
+          }
+        },
+      });
+  }
+
+  /**
+   * Patrimonio = Saldo disponible + Fondos - Deudas
+   */
+  private recalculatePatrimony() {
+    this.estimatedPatrimony = this.totalBalance + this.blockedSavings - this.totalDebt;
   }
 
   /**

@@ -1,0 +1,10 @@
+[build]
+  base    = "apps/frontend"
+  command = "npm run build:prod"
+  publish = "dist/finanzas-frontend"
+
+# Angular SPA: redirige todas las rutas a index.html para que el router funcione
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200

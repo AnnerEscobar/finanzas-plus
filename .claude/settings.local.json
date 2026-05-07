@@ -46,7 +46,18 @@
       "Bash(curl -s http://localhost:9999/api/)",
       "PowerShell($port = 9999; $proc = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess; if \\($proc\\) { Stop-Process -Id $proc -Force -ErrorAction SilentlyContinue; Write-Host \"✓ Proceso en puerto $port detenido \\(PID: $proc\\)\"; Start-Sleep -Seconds 2 } else { Write-Host \"✓ Puerto $port ya está libre\" })",
       "Bash(docker stop *)",
-      "Bash(docker rm *)"
+      "Bash(docker rm *)",
+      "Bash(curl -X POST http://localhost:9999/api/auth/register -H 'Content-Type: application/json' -d '{\"userId\":\"juan123\",\"name\":\"Juan Pérez\",\"email\":\"juan@example.com\"}')",
+      "Bash(powershell -Command \"[Console]::In.ReadToEnd\\(\\) | ConvertFrom-Json | ConvertTo-Json -Depth 10\")",
+      "Bash(curl -X POST http://localhost:9999/api/auth/login -H 'Content-Type: application/json' -d '{\"userId\":\"juan123\"}')",
+      "Bash(curl -X POST http://localhost:9999/api/credit-cards -H 'Content-Type: application/json' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJqdWFuMTIzIiwiaWF0IjoxNzc3ODYwNTQ1LCJleHAiOjE3Nzg0NjUzNDV9.5clH8kVKNAZUNnbZj7zyP6w8g_qzNLZlxTtpHaxZCmk' -d '{ *)",
+      "Bash(powershell -Command \"[Console]::In.ReadToEnd\\(\\) | ConvertFrom-Json | ConvertTo-Json -Depth 5\")",
+      "PowerShell(Stop-Process -Id 40428 -Force 2>&1)",
+      "PowerShell(\"Killed process 40428\")",
+      "Read(//tmp/**)",
+      "Bash(ng serve *)",
+      "Bash(npx tsc *)",
+      "Bash(grep -v \"^$\")"
     ]
   }
 }

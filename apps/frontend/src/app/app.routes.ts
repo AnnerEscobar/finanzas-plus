@@ -52,6 +52,11 @@ export const routes: Routes = [
     canActivate: [AuthGuard],
   },
   {
+    path: 'closures',
+    loadComponent: () => import('./modules/closures/closures.component').then(m => m.ClosuresComponent),
+    canActivate: [AuthGuard],
+  },
+  {
     path: '**',
     redirectTo: 'dashboard',
   },

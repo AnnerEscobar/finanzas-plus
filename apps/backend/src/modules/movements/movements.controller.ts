@@ -1,4 +1,15 @@
-import { Controller, Post, Get, Body, Query, UseGuards, Req } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Delete,
+  Body,
+  Query,
+  Param,
+  UseGuards,
+  Req,
+  HttpCode,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { MovementsService } from './movements.service';
 
@@ -9,55 +20,82 @@ export class MovementsController {
 
   /**
    * POST /movements/income
-   * Registrar un ingreso (RB-05)
    */
   @Post('income')
+  @HttpCode(201)
   async createIncome(@Body() data: any, @Req() req: any) {
     return this.movementsService.createIncome(req.user.userId, data);
   }
 
   /**
    * POST /movements/expense
-   * Registrar un gasto con efectivo/débito (RB-06)
    */
   @Post('expense')
+  @HttpCode(201)
   async createExpense(@Body() data: any, @Req() req: any) {
     return this.movementsService.createExpense(req.user.userId, data);
   }
 
   /**
    * POST /movements/transfer
-   * Registrar transferencia entre cuentas propias (RB-08)
    */
   @Post('transfer')
+  @HttpCode(201)
   async createTransfer(@Body() data: any, @Req() req: any) {
     return this.movementsService.createTransfer(req.user.userId, data);
   }
 
   /**
    * POST /movements/adjustment
-   * Registrar ajuste de saldo (conciliación)
    */
   @Post('adjustment')
+  @HttpCode(201)
   async createAdjustment(@Body() data: any, @Req() req: any) {
     return this.movementsService.createAdjustment(req.user.userId, data);
   }
 
   /**
    * GET /movements
-   * Obtener movimientos con filtros
+   * Filtros: accountId, type, categoryId, fromDate, toDate, limit
    */
   @Get()
   async getMovements(@Query() filters: any, @Req() req: any) {
-    return this.movementsService.getMovements(req.user.userId, filters);
+    const movements = await this.movementsService.getMovements(req.user.userId, filters);
+    return {
+      movements,
+      count: movements.length,
+    };
   }
 
   /**
    * GET /movements/summary?year=2026&month=5
-   * Obtener resumen mensual
    */
   @Get('summary')
-  async getMonthlySummary(@Query('year') year: string, @Query('month') month: string, @Req() req: any) {
-    return this.movementsService.getMonthlySummary(req.user.userId, parseInt(year), parseInt(month));
+  async getMonthlySummary(
+    @Query('year') year: string,
+    @Query('month') month: string,
+    @Req() req: any,
+  ) {
+    const now = new Date();
+    const y = year ? parseInt(year) : now.getFullYear();
+    const m = month ? parseInt(month) : now.getMonth() + 1;
+    return this.movementsService.getMonthlySummary(req.user.userId, y, m);
+  }
+
+  /**
+   * GET /movements/:id
+   */
+  @Get(':id')
+  async getMovement(@Param('id') id: string, @Req() req: any) {
+    return this.movementsService.findByIdAndUser(id, req.user.userId);
+  }
+
+  /**
+   * DELETE /movements/:id
+   * Elimina movimiento revirtiendo el efecto en la cuenta
+   */
+  @Delete(':id')
+  async deleteMovement(@Param('id') id: string, @Req() req: any) {
+    return this.movementsService.deleteMovement(req.user.userId, id);
   }
 }

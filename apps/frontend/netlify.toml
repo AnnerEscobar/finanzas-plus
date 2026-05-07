@@ -1,0 +1,10 @@
+# Este archivo es solo referencia. El netlify.toml activo está en la raíz del repo.
+# Se usa si configuras "Base directory = apps/frontend" en el dashboard de Netlify.
+[build]
+  command = "npm run build:prod"
+  publish = "dist/finanzas-frontend"
+
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200

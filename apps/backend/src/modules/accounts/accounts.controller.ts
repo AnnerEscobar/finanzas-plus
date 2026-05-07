@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Body, Param, Put, UseGuards, Req } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Put,
+  Delete,
+  UseGuards,
+  Req,
+  HttpCode,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AccountsService } from './accounts.service';
 
@@ -10,32 +21,40 @@ export class AccountsController {
   /**
    * POST /accounts
    * Crear una nueva cuenta
-   * Body: { alias, institution?, type?, currentBalanceCents? }
    */
   @Post()
+  @HttpCode(201)
   async create(@Body() accountData: any, @Req() req: any) {
     return this.accountsService.create(req.user.userId, accountData);
   }
 
   /**
    * GET /accounts
-   * Listar todas las cuentas activas del usuario
+   * Listar todas las cuentas activas con resumen
    */
   @Get()
   async findByUser(@Req() req: any) {
     const accounts = await this.accountsService.findByUserId(req.user.userId);
-    const totalBalance = await this.accountsService.getTotalBalance(req.user.userId);
+    const summary = await this.accountsService.getSummary(req.user.userId);
 
     return {
       accounts,
-      totalBalance,
-      totalBalanceFormatted: `Q${(totalBalance / 100).toFixed(2)}`,
+      totalBalance: summary.totalBalanceCents,
+      totalBalanceFormatted: summary.totalBalanceFormatted,
+      summary,
     };
   }
 
   /**
-   * GET /accounts/total
-   * Obtener el saldo total disponible (RB-01)
+   * GET /accounts/summary
+   */
+  @Get('summary')
+  async getSummary(@Req() req: any) {
+    return this.accountsService.getSummary(req.user.userId);
+  }
+
+  /**
+   * GET /accounts/balance/total
    */
   @Get('balance/total')
   async getTotalBalance(@Req() req: any) {
@@ -49,19 +68,26 @@ export class AccountsController {
 
   /**
    * GET /accounts/:id
-   * Obtener detalles de una cuenta específica
    */
   @Get(':id')
-  async findById(@Param('id') id: string) {
-    return this.accountsService.findById(id);
+  async findById(@Param('id') id: string, @Req() req: any) {
+    return this.accountsService.findByIdAndUser(id, req.user.userId);
   }
 
   /**
    * PUT /accounts/:id
-   * Actualizar una cuenta
    */
   @Put(':id')
-  async update(@Param('id') id: string, @Body() updateData: any) {
-    return this.accountsService.update(id, updateData);
+  async update(@Param('id') id: string, @Body() updateData: any, @Req() req: any) {
+    return this.accountsService.update(id, req.user.userId, updateData);
+  }
+
+  /**
+   * DELETE /accounts/:id
+   * Soft delete (marcar como inactiva)
+   */
+  @Delete(':id')
+  async delete(@Param('id') id: string, @Req() req: any) {
+    return this.accountsService.delete(id, req.user.userId);
   }
 }

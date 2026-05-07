@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Movement } from './schemas/movement.schema';
@@ -15,28 +15,32 @@ export class MovementsService {
 
   /**
    * RB-05: Registrar ingreso
-   * Aumenta el saldo de la cuenta destino
    */
   async createIncome(userId: string, data: any) {
     const { amountCents, date, accountId, categoryId, note } = data;
 
-    if (amountCents <= 0) {
+    if (!amountCents || amountCents <= 0) {
       throw new BadRequestException('El monto debe ser mayor a 0');
     }
+    if (!accountId) {
+      throw new BadRequestException('La cuenta destino es requerida');
+    }
+
+    // Validar que la cuenta pertenezca al usuario
+    await this.accountsService.findByIdAndUser(accountId, userId);
 
     // Aumentar saldo de cuenta (RB-05)
     await this.accountsService.increaseBalance(accountId, amountCents);
 
-    // Registrar movimiento
     const movement = new this.movementModel({
       userId,
       type: 'income',
       amountCents,
-      date: date || new Date(),
+      date: date ? new Date(date) : new Date(),
       accountId,
-      categoryId,
+      categoryId: categoryId || undefined,
       paymentMethod: 'transfer',
-      note,
+      note: note || '',
       status: 'completed',
     });
 
@@ -45,32 +49,34 @@ export class MovementsService {
 
   /**
    * RB-06: Registrar gasto con efectivo/débito
-   * Reduce el saldo de la cuenta origen
    */
   async createExpense(userId: string, data: any) {
     const { amountCents, date, accountId, categoryId, paymentMethod, note } = data;
 
-    if (amountCents <= 0) {
+    if (!amountCents || amountCents <= 0) {
       throw new BadRequestException('El monto debe ser mayor a 0');
     }
-
+    if (!accountId) {
+      throw new BadRequestException('La cuenta es requerida');
+    }
     if (!['cash', 'debit'].includes(paymentMethod)) {
       throw new BadRequestException('paymentMethod debe ser cash o debit');
     }
 
-    // Reducir saldo de cuenta (RB-06)
+    await this.accountsService.findByIdAndUser(accountId, userId);
+
+    // Reducir saldo (RB-06)
     await this.accountsService.decreaseBalance(accountId, amountCents);
 
-    // Registrar movimiento
     const movement = new this.movementModel({
       userId,
       type: 'expense',
       amountCents,
-      date: date || new Date(),
+      date: date ? new Date(date) : new Date(),
       accountId,
-      categoryId,
+      categoryId: categoryId || undefined,
       paymentMethod,
-      note,
+      note: note || '',
       status: 'completed',
     });
 
@@ -79,59 +85,96 @@ export class MovementsService {
 
   /**
    * RB-08: Transferencia entre cuentas propias
-   * Afecta cuenta origen (decremento) + cuenta destino (incremento)
-   * Operación ACID (RB-19)
    */
   async createTransfer(userId: string, data: any) {
     const { amountCents, date, sourceAccountId, targetAccountId, note } = data;
 
-    if (amountCents <= 0) {
+    if (!amountCents || amountCents <= 0) {
       throw new BadRequestException('El monto debe ser mayor a 0');
     }
-
+    if (!sourceAccountId || !targetAccountId) {
+      throw new BadRequestException('Cuentas origen y destino son requeridas');
+    }
     if (sourceAccountId === targetAccountId) {
       throw new BadRequestException('No puede transferir a la misma cuenta');
     }
 
-    // TODO: Usar sesión de MongoDB para transacción ACID
-    // Por ahora, hacemos las operaciones secuencialmente
+    // Validar ambas cuentas pertenezcan al usuario
+    await this.accountsService.findByIdAndUser(sourceAccountId, userId);
+    await this.accountsService.findByIdAndUser(targetAccountId, userId);
 
-    // Reducir cuenta origen
+    // TODO: Usar sesión MongoDB para transacción ACID (RB-19)
     await this.accountsService.decreaseBalance(sourceAccountId, amountCents);
-
-    // Aumentar cuenta destino
     await this.accountsService.increaseBalance(targetAccountId, amountCents);
 
-    // Registrar movimiento de salida
+    const movementDate = date ? new Date(date) : new Date();
+    const noteText = note || '';
+
+    // Movimiento de salida
     const transferOut = new this.movementModel({
       userId,
       type: 'transfer',
       amountCents,
-      date: date || new Date(),
+      date: movementDate,
       accountId: sourceAccountId,
       paymentMethod: 'transfer',
-      note: `Transferencia a otra cuenta: ${note || ''}`,
+      note: `→ Transferencia: ${noteText}`,
       status: 'completed',
     });
-
     const transferOutSaved = await transferOut.save();
 
-    // Registrar movimiento de entrada
+    // Movimiento de entrada
     const transferIn = new this.movementModel({
       userId,
       type: 'transfer',
       amountCents,
-      date: date || new Date(),
+      date: movementDate,
       accountId: targetAccountId,
       paymentMethod: 'transfer',
-      note: `Recepción de transferencia: ${note || ''}`,
+      note: `← Recepción: ${noteText}`,
       status: 'completed',
       relatedEntityId: transferOutSaved._id,
     });
-
     await transferIn.save();
 
+    // Actualizar relatedEntityId del primero
+    transferOutSaved.relatedEntityId = transferIn._id as Types.ObjectId;
+    await transferOutSaved.save();
+
     return { transferOut: transferOutSaved, transferIn };
+  }
+
+  /**
+   * Crear registro de movimiento SIN tocar el saldo de la cuenta.
+   * Uso interno: payCorte() crea los movimientos de gasto aquí,
+   * y hace UN solo decreaseBalance() por el total del corte.
+   */
+  async createMovementRecord(
+    userId: string,
+    data: {
+      type: 'income' | 'expense';
+      amountCents: number;
+      date: Date;
+      accountId: string;
+      categoryId?: string;
+      paymentMethod?: string;
+      note?: string;
+      relatedEntityId?: string;
+    },
+  ) {
+    const movement = new this.movementModel({
+      userId,
+      type: data.type,
+      amountCents: data.amountCents,
+      date: data.date,
+      accountId: data.accountId,
+      categoryId: data.categoryId || undefined,
+      paymentMethod: data.paymentMethod || 'debit',
+      note: data.note || '',
+      status: 'completed',
+      relatedEntityId: data.relatedEntityId || undefined,
+    });
+    return movement.save();
   }
 
   /**
@@ -140,10 +183,7 @@ export class MovementsService {
   async createAdjustment(userId: string, data: any) {
     const { amountCents, date, accountId, note } = data;
 
-    const account = await this.accountsService.findById(accountId);
-    if (!account) {
-      throw new BadRequestException('Cuenta no encontrada');
-    }
+    const account = await this.accountsService.findByIdAndUser(accountId, userId);
 
     const newBalance = account.currentBalanceCents + amountCents;
 
@@ -151,23 +191,59 @@ export class MovementsService {
       throw new BadRequestException('El ajuste resultaría en saldo negativo');
     }
 
-    // Actualizar saldo
     account.currentBalanceCents = newBalance;
     await account.save();
 
-    // Registrar ajuste
     const movement = new this.movementModel({
       userId,
       type: 'adjustment',
-      amountCents,
-      date: date || new Date(),
+      amountCents: Math.abs(amountCents),
+      date: date ? new Date(date) : new Date(),
       accountId,
       paymentMethod: 'adjustment',
-      note: note || 'Ajuste de conciliación',
+      note: note || `Ajuste de ${amountCents > 0 ? '+' : '-'}${Math.abs(amountCents / 100).toFixed(2)}`,
       status: 'completed',
     });
 
     return movement.save();
+  }
+
+  /**
+   * Eliminar un movimiento - revierte el efecto en la cuenta
+   */
+  async deleteMovement(userId: string, movementId: string) {
+    const movement = await this.movementModel.findOne({ _id: movementId, userId });
+    if (!movement) {
+      throw new NotFoundException('Movimiento no encontrado');
+    }
+
+    // Revertir efecto en cuenta
+    if (movement.type === 'income') {
+      // Era ingreso → ahora descontar
+      const account = await this.accountsService.findById(movement.accountId.toString());
+      if (account && account.currentBalanceCents >= movement.amountCents) {
+        await this.accountsService.decreaseBalance(movement.accountId.toString(), movement.amountCents);
+      } else {
+        throw new BadRequestException(
+          'No se puede eliminar este ingreso porque ya se gastó. Realiza un ajuste.',
+        );
+      }
+    } else if (movement.type === 'expense') {
+      // Era gasto → restaurar
+      await this.accountsService.increaseBalance(movement.accountId.toString(), movement.amountCents);
+    } else if (movement.type === 'transfer') {
+      // Eliminar también el par y revertir
+      throw new BadRequestException(
+        'Para eliminar transferencias, ve al detalle y borra ambas partes manualmente o crea un ajuste.',
+      );
+    } else if (movement.type === 'adjustment') {
+      // No se puede revertir un ajuste fácilmente sin perder rastro
+      throw new BadRequestException(
+        'Los ajustes no se pueden eliminar. Crea un ajuste contrario.',
+      );
+    }
+
+    return this.movementModel.findByIdAndDelete(movementId);
   }
 
   /**
@@ -184,6 +260,10 @@ export class MovementsService {
       query.type = filters.type;
     }
 
+    if (filters.categoryId) {
+      query.categoryId = new Types.ObjectId(filters.categoryId);
+    }
+
     if (filters.fromDate || filters.toDate) {
       query.date = {};
       if (filters.fromDate) {
@@ -194,12 +274,28 @@ export class MovementsService {
       }
     }
 
+    const limit = filters.limit ? parseInt(filters.limit) : 200;
+
     return this.movementModel
       .find(query)
-      .sort({ date: -1 })
-      .limit(100)
-      .populate('accountId')
-      .populate('categoryId');
+      .sort({ date: -1, createdAt: -1 })
+      .limit(limit)
+      .populate('accountId', 'alias type institution')
+      .populate('categoryId', 'name type');
+  }
+
+  /**
+   * Movimiento por ID
+   */
+  async findByIdAndUser(id: string, userId: string) {
+    const movement = await this.movementModel
+      .findOne({ _id: id, userId })
+      .populate('accountId', 'alias type institution')
+      .populate('categoryId', 'name type');
+    if (!movement) {
+      throw new NotFoundException('Movimiento no encontrado');
+    }
+    return movement;
   }
 
   /**
@@ -209,37 +305,56 @@ export class MovementsService {
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0, 23, 59, 59);
 
-    const movements = await this.movementModel.find({
-      userId,
-      date: { $gte: startDate, $lte: endDate },
-    });
+    const movements = await this.movementModel
+      .find({
+        userId,
+        date: { $gte: startDate, $lte: endDate },
+      })
+      .populate('categoryId', 'name type');
 
-    const summary: any = {
-      totalIncome: 0,
-      totalExpense: 0,
-      totalTransfers: 0,
-      movementsByType: {} as Record<string, number>,
-    };
+    let totalIncome = 0;
+    let totalExpense = 0;
+    let totalTransfersOut = 0;
+    const expenseByCategory: Record<string, { name: string; totalCents: number }> = {};
+    const incomeByCategory: Record<string, { name: string; totalCents: number }> = {};
 
-    movements.forEach((m) => {
+    movements.forEach((m: any) => {
       if (m.type === 'income') {
-        summary.totalIncome += m.amountCents;
+        totalIncome += m.amountCents;
+        const catName = m.categoryId?.name || 'Sin categoría';
+        const catId = m.categoryId?._id?.toString() || 'none';
+        if (!incomeByCategory[catId]) {
+          incomeByCategory[catId] = { name: catName, totalCents: 0 };
+        }
+        incomeByCategory[catId].totalCents += m.amountCents;
       } else if (m.type === 'expense') {
-        summary.totalExpense += m.amountCents;
-      } else if (m.type === 'transfer') {
-        summary.totalTransfers += m.amountCents;
+        totalExpense += m.amountCents;
+        const catName = m.categoryId?.name || 'Sin categoría';
+        const catId = m.categoryId?._id?.toString() || 'none';
+        if (!expenseByCategory[catId]) {
+          expenseByCategory[catId] = { name: catName, totalCents: 0 };
+        }
+        expenseByCategory[catId].totalCents += m.amountCents;
+      } else if (m.type === 'transfer' && m.note?.startsWith('→')) {
+        totalTransfersOut += m.amountCents;
       }
-
-      if (!summary.movementsByType[m.type]) {
-        summary.movementsByType[m.type] = 0;
-      }
-      summary.movementsByType[m.type]++;
     });
+
+    const balance = totalIncome - totalExpense;
 
     return {
-      ...summary,
-      totalIncomeFormatted: `Q${(summary.totalIncome / 100).toFixed(2)}`,
-      totalExpenseFormatted: `Q${(summary.totalExpense / 100).toFixed(2)}`,
+      year,
+      month,
+      totalIncome,
+      totalExpense,
+      totalTransfersOut,
+      balance,
+      totalIncomeFormatted: `Q${(totalIncome / 100).toFixed(2)}`,
+      totalExpenseFormatted: `Q${(totalExpense / 100).toFixed(2)}`,
+      balanceFormatted: `Q${(balance / 100).toFixed(2)}`,
+      movementsCount: movements.length,
+      expenseByCategory: Object.values(expenseByCategory).sort((a, b) => b.totalCents - a.totalCents),
+      incomeByCategory: Object.values(incomeByCategory).sort((a, b) => b.totalCents - a.totalCents),
     };
   }
 }

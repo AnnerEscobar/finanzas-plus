@@ -1,40 +1,37 @@
-import { Injectable } from '@angular/core';
-import {
-  HttpRequest,
-  HttpHandler,
-  HttpEvent,
-  HttpInterceptor,
-  HttpErrorResponse,
-} from '@angular/common/http';
-import { Observable, throwError } from 'rxjs';
-import { catchError } from 'rxjs/operators';
+import { HttpInterceptorFn } from '@angular/common/http';
+import { inject } from '@angular/core';
 import { AuthService } from '../services/auth.service';
-import { Router } from '@angular/router';
+import { catchError } from 'rxjs/operators';
+import { throwError } from 'rxjs';
 
-@Injectable()
-export class AuthInterceptor implements HttpInterceptor {
-  constructor(private authService: AuthService, private router: Router) {}
+/**
+ * Functional HTTP Interceptor para Angular 18 Standalone Apps
+ * Agrega el token JWT al header Authorization de todas las requests
+ */
+export const authInterceptor: HttpInterceptorFn = (req, next) => {
+  const authService = inject(AuthService);
+  const token = authService.getToken();
 
-  intercept(request: HttpRequest<unknown>, next: HttpHandler): Observable<HttpEvent<unknown>> {
-    // Agregar token JWT a la petición
-    const token = this.authService.getToken();
-    if (token) {
-      request = request.clone({
-        setHeaders: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-    }
-
-    return next.handle(request).pipe(
-      catchError((error: HttpErrorResponse) => {
-        // Si es error 401 (no autorizado), logout
-        if (error.status === 401) {
-          this.authService.logout();
-        }
-
-        return throwError(() => error);
-      }),
-    );
+  // Clonar request y agregar Authorization header si existe token
+  if (token) {
+    req = req.clone({
+      setHeaders: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    console.log('✅ Token agregado al header - URL:', req.url);
+  } else {
+    console.warn('⚠️ Sin token en localStorage');
   }
-}
+
+  return next(req).pipe(
+    catchError((error: any) => {
+      if (error.status === 401) {
+        console.error('❌ 401 Unauthorized');
+        console.error('URL:', req.url);
+        console.error('Token presente:', !!token);
+      }
+      return throwError(() => error);
+    }),
+  );
+};

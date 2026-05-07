@@ -1,0 +1,17 @@
+/* Navbar Styles */
+
+nav {
+  border-bottom: 1px solid #e5e7eb;
+}
+
+a, button {
+  transition: all 0.2s ease;
+}
+
+/* Scrollable nav items on tablet */
+@media (min-width: 1024px) and (max-width: 1280px) {
+  .lg\:flex {
+    overflow-x: auto;
+    max-width: 60%;
+  }
+}

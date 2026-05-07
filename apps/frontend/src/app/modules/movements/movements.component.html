@@ -1,0 +1,472 @@
+<app-navbar></app-navbar>
+
+<div class="p-6 bg-gray-50 min-h-screen">
+  <!-- Header -->
+  <div class="flex justify-between items-center mb-6">
+    <h1 class="text-3xl font-bold text-gray-900">Movimientos</h1>
+  </div>
+
+  <!-- Mensajes -->
+  <div *ngIf="error" class="mb-4 p-4 bg-red-100 text-red-700 rounded-lg">{{ error }}</div>
+  <div *ngIf="success" class="mb-4 p-4 bg-green-100 text-green-700 rounded-lg">{{ success }}</div>
+
+  <!-- Action Buttons -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+    <button
+      (click)="openDialog('income')"
+      class="bg-green-600 hover:bg-green-700 text-white p-4 rounded-lg shadow font-semibold transition flex flex-col items-center"
+    >
+      <span class="text-2xl mb-1">⬆️</span>
+      <span>Ingreso</span>
+    </button>
+    <button
+      (click)="openDialog('expense')"
+      class="bg-red-600 hover:bg-red-700 text-white p-4 rounded-lg shadow font-semibold transition flex flex-col items-center"
+    >
+      <span class="text-2xl mb-1">⬇️</span>
+      <span>Gasto</span>
+    </button>
+    <button
+      (click)="openDialog('transfer')"
+      class="bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-lg shadow font-semibold transition flex flex-col items-center"
+    >
+      <span class="text-2xl mb-1">↔️</span>
+      <span>Transferencia</span>
+    </button>
+    <button
+      (click)="openDialog('adjustment')"
+      class="bg-yellow-600 hover:bg-yellow-700 text-white p-4 rounded-lg shadow font-semibold transition flex flex-col items-center"
+    >
+      <span class="text-2xl mb-1">⚖️</span>
+      <span>Ajuste</span>
+    </button>
+  </div>
+
+  <!-- Monthly Summary -->
+  <div *ngIf="monthlySummary" class="bg-white rounded-lg shadow p-6 mb-6">
+    <div class="flex justify-between items-center mb-4">
+      <h2 class="text-lg font-bold">Resumen del mes</h2>
+      <div class="flex items-center gap-2">
+        <button (click)="changePeriod(-1)" class="p-1 hover:bg-gray-100 rounded">‹</button>
+        <span class="font-semibold min-w-[140px] text-center">{{ getMonthLabel() }}</span>
+        <button (click)="changePeriod(1)" class="p-1 hover:bg-gray-100 rounded">›</button>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+      <div class="bg-green-50 border border-green-200 p-4 rounded">
+        <p class="text-xs text-green-700">Ingresos</p>
+        <p class="text-2xl font-bold text-green-800">{{ monthlySummary.totalIncomeFormatted }}</p>
+      </div>
+      <div class="bg-red-50 border border-red-200 p-4 rounded">
+        <p class="text-xs text-red-700">Gastos</p>
+        <p class="text-2xl font-bold text-red-800">{{ monthlySummary.totalExpenseFormatted }}</p>
+      </div>
+      <div class="bg-blue-50 border border-blue-200 p-4 rounded">
+        <p class="text-xs text-blue-700">Balance</p>
+        <p class="text-2xl font-bold"
+           [class.text-green-700]="monthlySummary.balance > 0"
+           [class.text-red-700]="monthlySummary.balance < 0">
+          {{ monthlySummary.balanceFormatted }}
+        </p>
+      </div>
+    </div>
+
+    <!-- By Category -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div *ngIf="monthlySummary.expenseByCategory.length > 0">
+        <h3 class="font-semibold text-sm mb-2 text-gray-700">Gastos por categoría</h3>
+        <div class="space-y-1">
+          <div *ngFor="let cat of monthlySummary.expenseByCategory.slice(0, 5)"
+               class="flex justify-between items-center text-sm bg-gray-50 px-3 py-2 rounded">
+            <span>{{ cat.name }}</span>
+            <strong class="text-red-600">{{ formatCurrency(cat.totalCents) }}</strong>
+          </div>
+        </div>
+      </div>
+      <div *ngIf="monthlySummary.incomeByCategory.length > 0">
+        <h3 class="font-semibold text-sm mb-2 text-gray-700">Ingresos por categoría</h3>
+        <div class="space-y-1">
+          <div *ngFor="let cat of monthlySummary.incomeByCategory.slice(0, 5)"
+               class="flex justify-between items-center text-sm bg-gray-50 px-3 py-2 rounded">
+            <span>{{ cat.name }}</span>
+            <strong class="text-green-600">{{ formatCurrency(cat.totalCents) }}</strong>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="bg-white rounded-lg shadow p-4 mb-6">
+    <h3 class="font-semibold text-sm mb-3 text-gray-700">Filtros</h3>
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <select [(ngModel)]="filterType" (change)="applyFilters()" class="px-3 py-2 border rounded text-sm">
+        <option value="">Todo tipo</option>
+        <option value="income">Ingresos</option>
+        <option value="expense">Gastos</option>
+        <option value="transfer">Transferencias</option>
+        <option value="adjustment">Ajustes</option>
+      </select>
+      <select [(ngModel)]="filterAccountId" (change)="applyFilters()" class="px-3 py-2 border rounded text-sm">
+        <option value="">Todas las cuentas</option>
+        <option *ngFor="let acc of accounts" [value]="acc._id">{{ acc.alias }}</option>
+      </select>
+      <select [(ngModel)]="filterCategoryId" (change)="applyFilters()" class="px-3 py-2 border rounded text-sm">
+        <option value="">Todas las categorías</option>
+        <optgroup label="Gastos">
+          <option *ngFor="let c of categoriesExpense" [value]="c._id">{{ c.name }}</option>
+        </optgroup>
+        <optgroup label="Ingresos">
+          <option *ngFor="let c of categoriesIncome" [value]="c._id">{{ c.name }}</option>
+        </optgroup>
+      </select>
+      <input
+        type="date"
+        [(ngModel)]="filterFromDate"
+        (change)="applyFilters()"
+        placeholder="Desde"
+        class="px-3 py-2 border rounded text-sm"
+      />
+      <input
+        type="date"
+        [(ngModel)]="filterToDate"
+        (change)="applyFilters()"
+        placeholder="Hasta"
+        class="px-3 py-2 border rounded text-sm"
+      />
+    </div>
+    <button
+      (click)="clearFilters()"
+      class="mt-3 text-sm text-blue-600 hover:underline"
+    >
+      Limpiar filtros
+    </button>
+  </div>
+
+  <!-- Loading -->
+  <div *ngIf="loading && movements.length === 0" class="flex justify-center p-8">
+    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+  </div>
+
+  <!-- Empty -->
+  <div *ngIf="!loading && movements.length === 0" class="bg-white rounded-lg shadow p-12 text-center">
+    <p class="text-6xl mb-4">📋</p>
+    <p class="text-gray-500 text-lg mb-2">No hay movimientos registrados</p>
+    <p class="text-sm text-gray-400 mb-4">
+      Usa los botones de arriba para registrar ingresos, gastos, transferencias o ajustes
+    </p>
+  </div>
+
+  <!-- Movements Table -->
+  <div *ngIf="movements.length > 0" class="bg-white rounded-lg shadow overflow-hidden">
+    <div class="px-4 py-3 border-b bg-gray-50">
+      <h3 class="font-bold">Lista de Movimientos ({{ movements.length }})</h3>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50">
+          <tr class="text-left">
+            <th class="px-4 py-2">Fecha</th>
+            <th class="px-4 py-2">Tipo</th>
+            <th class="px-4 py-2">Cuenta</th>
+            <th class="px-4 py-2">Categoría</th>
+            <th class="px-4 py-2">Descripción</th>
+            <th class="px-4 py-2 text-right">Monto</th>
+            <th class="px-4 py-2"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let m of movements" class="border-t hover:bg-gray-50">
+            <td class="px-4 py-2 whitespace-nowrap">{{ m.date | date: 'shortDate' }}</td>
+            <td class="px-4 py-2">
+              <span class="text-xs px-2 py-1 rounded inline-flex items-center gap-1" [ngClass]="getTypeColor(m.type)">
+                {{ getTypeIcon(m.type) }} {{ getTypeLabel(m.type) }}
+              </span>
+            </td>
+            <td class="px-4 py-2">{{ getAccountAlias(m.accountId) }}</td>
+            <td class="px-4 py-2 text-gray-600">{{ getCategoryName(m.categoryId) }}</td>
+            <td class="px-4 py-2 text-gray-600">{{ m.note || '—' }}</td>
+            <td class="px-4 py-2 text-right font-bold whitespace-nowrap"
+                [class.text-green-600]="m.type === 'income'"
+                [class.text-red-600]="m.type === 'expense'"
+                [class.text-blue-600]="m.type === 'transfer'"
+                [class.text-yellow-700]="m.type === 'adjustment'">
+              {{ m.type === 'expense' ? '-' : '' }}{{ formatCurrency(m.amountCents) }}
+            </td>
+            <td class="px-4 py-2 text-right">
+              <button
+                (click)="deleteMovement(m)"
+                class="text-red-600 text-xs hover:underline"
+                title="Eliminar (revierte saldo)"
+              >
+                Eliminar
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Income Dialog -->
+  <div *ngIf="activeDialog === 'income'" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+      <h3 class="text-xl font-bold mb-4">⬆️ Registrar Ingreso</h3>
+      <form [formGroup]="incomeForm" (ngSubmit)="submitIncome()" class="space-y-3">
+        <div>
+          <label class="block text-sm font-medium mb-1">Monto (Q) *</label>
+          <input formControlName="amountCents" type="number" step="0.01" placeholder="0.00" class="w-full px-3 py-2 border rounded" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Fecha *</label>
+          <input formControlName="date" type="date" class="w-full px-3 py-2 border rounded" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Cuenta destino *</label>
+          <select formControlName="accountId" class="w-full px-3 py-2 border rounded">
+            <option value="">Selecciona...</option>
+            <option *ngFor="let acc of accounts" [value]="acc._id">
+              {{ acc.alias }} ({{ formatCurrency(acc.currentBalanceCents) }})
+            </option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Categoría</label>
+          <select formControlName="categoryId" class="w-full px-3 py-2 border rounded">
+            <option value="">Sin categoría</option>
+            <option *ngFor="let c of categoriesIncome" [value]="c._id">{{ c.name }}</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Descripción</label>
+          <input formControlName="note" type="text" class="w-full px-3 py-2 border rounded" />
+        </div>
+        <div class="flex gap-3 pt-2">
+          <button type="button" (click)="closeDialog()" class="flex-1 px-4 py-2 border rounded hover:bg-gray-50">Cancelar</button>
+          <button type="submit" [disabled]="!incomeForm.valid || loading" class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded disabled:opacity-50">
+            {{ loading ? 'Registrando...' : 'Registrar' }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Expense Dialog -->
+  <div *ngIf="activeDialog === 'expense'" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+      <h3 class="text-xl font-bold mb-4">⬇️ Registrar Gasto</h3>
+      <form [formGroup]="expenseForm" (ngSubmit)="submitExpense()" class="space-y-3">
+
+        <!-- Monto y Fecha -->
+        <div>
+          <label class="block text-sm font-medium mb-1">Monto (Q) *</label>
+          <input formControlName="amountCents" type="number" step="0.01" placeholder="0.00" class="w-full px-3 py-2 border rounded" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Fecha *</label>
+          <input formControlName="date" type="date" class="w-full px-3 py-2 border rounded" />
+        </div>
+
+        <!-- Forma de pago: botones toggle -->
+        <div>
+          <label class="block text-sm font-medium mb-2">Forma de pago *</label>
+          <div class="grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              (click)="expenseForm.patchValue({ paymentMethod: 'cash', accountId: '', cardId: '' })"
+              class="py-2 px-2 rounded border-2 text-sm font-medium transition"
+              [class.bg-green-600]="expensePaymentMethod === 'cash'"
+              [class.text-white]="expensePaymentMethod === 'cash'"
+              [class.border-green-600]="expensePaymentMethod === 'cash'"
+              [class.border-gray-300]="expensePaymentMethod !== 'cash'"
+              [class.text-gray-700]="expensePaymentMethod !== 'cash'"
+            >
+              💵 Efectivo
+            </button>
+            <button
+              type="button"
+              (click)="expenseForm.patchValue({ paymentMethod: 'debit', accountId: '', cardId: '' })"
+              class="py-2 px-2 rounded border-2 text-sm font-medium transition"
+              [class.bg-blue-600]="expensePaymentMethod === 'debit'"
+              [class.text-white]="expensePaymentMethod === 'debit'"
+              [class.border-blue-600]="expensePaymentMethod === 'debit'"
+              [class.border-gray-300]="expensePaymentMethod !== 'debit'"
+              [class.text-gray-700]="expensePaymentMethod !== 'debit'"
+            >
+              🏦 Débito
+            </button>
+            <button
+              type="button"
+              (click)="expenseForm.patchValue({ paymentMethod: 'credit_card', accountId: '', cardId: '' })"
+              class="py-2 px-2 rounded border-2 text-sm font-medium transition"
+              [class.bg-orange-500]="expensePaymentMethod === 'credit_card'"
+              [class.text-white]="expensePaymentMethod === 'credit_card'"
+              [class.border-orange-500]="expensePaymentMethod === 'credit_card'"
+              [class.border-gray-300]="expensePaymentMethod !== 'credit_card'"
+              [class.text-gray-700]="expensePaymentMethod !== 'credit_card'"
+            >
+              💳 Tarjeta
+            </button>
+          </div>
+        </div>
+
+        <!-- Cuenta (solo para efectivo/débito) -->
+        <div *ngIf="expensePaymentMethod !== 'credit_card'">
+          <label class="block text-sm font-medium mb-1">Cuenta *</label>
+          <select formControlName="accountId" class="w-full px-3 py-2 border rounded">
+            <option value="">Selecciona...</option>
+            <option *ngFor="let acc of accounts" [value]="acc._id">
+              {{ acc.alias }} ({{ formatCurrency(acc.currentBalanceCents) }})
+            </option>
+          </select>
+        </div>
+
+        <!-- Tarjeta de crédito (solo para credit_card) -->
+        <div *ngIf="expensePaymentMethod === 'credit_card'">
+          <label class="block text-sm font-medium mb-1">Tarjeta de Crédito *</label>
+          <select formControlName="cardId" class="w-full px-3 py-2 border rounded">
+            <option value="">Selecciona...</option>
+            <option *ngFor="let card of creditCards" [value]="card._id">
+              {{ card.alias }} — {{ card.issuer }}
+            </option>
+          </select>
+          <p *ngIf="creditCards.length === 0" class="text-xs text-red-500 mt-1">
+            No hay tarjetas con corte abierto disponibles
+          </p>
+        </div>
+
+        <!-- Descripción del cargo (solo para credit_card) -->
+        <div *ngIf="expensePaymentMethod === 'credit_card'">
+          <label class="block text-sm font-medium mb-1">Descripción del cargo *</label>
+          <input
+            formControlName="description"
+            type="text"
+            placeholder="Ej: Supermercado, Gasolinera..."
+            class="w-full px-3 py-2 border rounded"
+          />
+        </div>
+
+        <!-- Categoría -->
+        <div>
+          <label class="block text-sm font-medium mb-1">Categoría</label>
+          <select formControlName="categoryId" class="w-full px-3 py-2 border rounded">
+            <option value="">Sin categoría</option>
+            <option *ngFor="let c of categoriesExpense" [value]="c._id">{{ c.name }}</option>
+          </select>
+        </div>
+
+        <!-- Nota -->
+        <div>
+          <label class="block text-sm font-medium mb-1">Nota</label>
+          <input formControlName="note" type="text" placeholder="Opcional..." class="w-full px-3 py-2 border rounded" />
+        </div>
+
+        <!-- Aviso informativo para tarjeta -->
+        <div *ngIf="expensePaymentMethod === 'credit_card'"
+             class="bg-orange-50 border border-orange-200 rounded p-3 text-xs text-orange-800">
+          💡 El cargo se añadirá al corte abierto de la tarjeta. No sale dinero ahora — el gasto real ocurre cuando pagues el corte.
+        </div>
+
+        <div class="flex gap-3 pt-2">
+          <button type="button" (click)="closeDialog()" class="flex-1 px-4 py-2 border rounded hover:bg-gray-50">Cancelar</button>
+          <button
+            type="submit"
+            [disabled]="loading"
+            class="flex-1 px-4 py-2 text-white rounded disabled:opacity-50 transition"
+            [class.bg-red-600]="expensePaymentMethod !== 'credit_card'"
+            [class.hover:bg-red-700]="expensePaymentMethod !== 'credit_card'"
+            [class.bg-orange-500]="expensePaymentMethod === 'credit_card'"
+            [class.hover:bg-orange-600]="expensePaymentMethod === 'credit_card'"
+          >
+            {{ loading ? 'Registrando...' : expensePaymentMethod === 'credit_card' ? 'Cargar a Tarjeta' : 'Registrar Gasto' }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Transfer Dialog -->
+  <div *ngIf="activeDialog === 'transfer'" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+      <h3 class="text-xl font-bold mb-4">↔️ Transferencia</h3>
+      <form [formGroup]="transferForm" (ngSubmit)="submitTransfer()" class="space-y-3">
+        <div>
+          <label class="block text-sm font-medium mb-1">Monto (Q) *</label>
+          <input formControlName="amountCents" type="number" step="0.01" placeholder="0.00" class="w-full px-3 py-2 border rounded" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Fecha *</label>
+          <input formControlName="date" type="date" class="w-full px-3 py-2 border rounded" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Cuenta origen *</label>
+          <select formControlName="sourceAccountId" class="w-full px-3 py-2 border rounded">
+            <option value="">Selecciona...</option>
+            <option *ngFor="let acc of accounts" [value]="acc._id">
+              {{ acc.alias }} ({{ formatCurrency(acc.currentBalanceCents) }})
+            </option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Cuenta destino *</label>
+          <select formControlName="targetAccountId" class="w-full px-3 py-2 border rounded">
+            <option value="">Selecciona...</option>
+            <option *ngFor="let acc of accounts" [value]="acc._id">
+              {{ acc.alias }} ({{ formatCurrency(acc.currentBalanceCents) }})
+            </option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Descripción</label>
+          <input formControlName="note" type="text" class="w-full px-3 py-2 border rounded" />
+        </div>
+        <div class="flex gap-3 pt-2">
+          <button type="button" (click)="closeDialog()" class="flex-1 px-4 py-2 border rounded hover:bg-gray-50">Cancelar</button>
+          <button type="submit" [disabled]="!transferForm.valid || loading" class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50">
+            {{ loading ? 'Transfiriendo...' : 'Transferir' }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Adjustment Dialog -->
+  <div *ngIf="activeDialog === 'adjustment'" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+      <h3 class="text-xl font-bold mb-4">⚖️ Ajuste de Saldo</h3>
+      <p class="text-xs text-gray-600 mb-3">
+        Usa positivo para aumentar saldo, negativo para disminuir. Ejemplo: <strong>-50</strong> resta Q50.
+      </p>
+      <form [formGroup]="adjustmentForm" (ngSubmit)="submitAdjustment()" class="space-y-3">
+        <div>
+          <label class="block text-sm font-medium mb-1">Monto (Q) *</label>
+          <input formControlName="amountCents" type="number" step="0.01" placeholder="±0.00" class="w-full px-3 py-2 border rounded" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Fecha *</label>
+          <input formControlName="date" type="date" class="w-full px-3 py-2 border rounded" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Cuenta *</label>
+          <select formControlName="accountId" class="w-full px-3 py-2 border rounded">
+            <option value="">Selecciona...</option>
+            <option *ngFor="let acc of accounts" [value]="acc._id">
+              {{ acc.alias }} ({{ formatCurrency(acc.currentBalanceCents) }})
+            </option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Razón del ajuste</label>
+          <input formControlName="note" type="text" placeholder="Ej: Conciliación bancaria" class="w-full px-3 py-2 border rounded" />
+        </div>
+        <div class="flex gap-3 pt-2">
+          <button type="button" (click)="closeDialog()" class="flex-1 px-4 py-2 border rounded hover:bg-gray-50">Cancelar</button>
+          <button type="submit" [disabled]="!adjustmentForm.valid || loading" class="flex-1 px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded disabled:opacity-50">
+            {{ loading ? 'Ajustando...' : 'Aplicar Ajuste' }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

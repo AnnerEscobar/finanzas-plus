@@ -1,0 +1,40 @@
+/* Debt Plan Component Styles */
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Method comparison highlights */
+table tbody tr:hover {
+  background-color: #f9fafb;
+}
+
+/* Manual order items animation */
+.flex.items-center.gap-3 {
+  transition: all 0.2s ease;
+}
+
+/* Recommendation gradient */
+.from-green-50 {
+  background-image: linear-gradient(to right, #f0fdf4, #eff6ff);
+}
+
+@media (max-width: 768px) {
+  table {
+    font-size: 0.75rem;
+  }
+
+  table th,
+  table td {
+    padding: 0.4rem;
+  }
+}

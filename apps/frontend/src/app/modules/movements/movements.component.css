@@ -1,0 +1,32 @@
+/* Movements Component Styles */
+
+.fixed {
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+table tbody tr {
+  transition: background-color 0.15s ease;
+}
+
+@media (max-width: 768px) {
+  table {
+    font-size: 0.75rem;
+  }
+  table th, table td {
+    padding: 0.5rem 0.4rem;
+  }
+}

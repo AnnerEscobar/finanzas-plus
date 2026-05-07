@@ -3,13 +3,20 @@ import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
-import { CreditCardsService, CreditCard, CreditCardCorte } from '../../core/services/creditCards.service';
+import {
+  CreditCardsService,
+  CreditCard,
+  CreditCardCorte,
+  ExtraFinanciamiento,
+} from '../../core/services/creditCards.service';
 import { AccountsService } from '../../core/services/accounts.service';
+import { MovementsService, Category } from '../../core/services/movements.service';
+import { NavbarComponent } from '../../shared/components/navbar/navbar.component';
 
 @Component({
   selector: 'app-credit-cards',
   standalone: true,
-  imports: [CommonModule, FormsModule, ReactiveFormsModule],
+  imports: [CommonModule, FormsModule, ReactiveFormsModule, NavbarComponent],
   templateUrl: './creditCards.component.html',
   styleUrls: ['./creditCards.component.css'],
 })
@@ -20,27 +27,44 @@ export class CreditCardsComponent implements OnInit, OnDestroy {
   selectedCorte: CreditCardCorte | null = null;
   totalBalance: string = 'Q0.00';
 
+  // Migration
+  needsMigration = false;
+  migrating = false;
+  showMigrationForm = false;
+
+  // Migration overrides per card: { cardId: { cutoffDay, paymentDueDay } }
+  migrationOverrides: Record<string, { cutoffDay: number; paymentDueDay: number }> = {};
+
   // Loading/Error
   loading = false;
   error: string | null = null;
+  success: string | null = null;
 
   // Dialogs
   showAddCardDialog = false;
   showAddChargeDialog = false;
   showPaymentDialog = false;
+  showExtraFinanciamientoDialog = false;
+  showPayCorteDialog = false;
 
   // Forms
   cardForm!: FormGroup;
   chargeForm!: FormGroup;
   paymentForm!: FormGroup;
+  efForm!: FormGroup;
+  payCorteForm!: FormGroup;
+
+  // Lookup data
+  accounts: any[] = [];
+  categories: Category[] = [];
 
   // RxJS
   private destroy$ = new Subject<void>();
-  accounts: any[] = [];
 
   constructor(
     private creditCardsService: CreditCardsService,
     private accountsService: AccountsService,
+    private movementsService: MovementsService,
     private fb: FormBuilder,
   ) {
     this.initializeForms();
@@ -48,6 +72,8 @@ export class CreditCardsComponent implements OnInit, OnDestroy {
 
   ngOnInit() {
     this.loadCards();
+    this.loadAccounts();
+    this.loadCategories();
   }
 
   ngOnDestroy() {
@@ -55,22 +81,25 @@ export class CreditCardsComponent implements OnInit, OnDestroy {
     this.destroy$.complete();
   }
 
-  /**
-   * Initialize forms with validation
-   */
+  // ============================================
+  // Forms initialization
+  // ============================================
+
   private initializeForms() {
     this.cardForm = this.fb.group({
       alias: ['', Validators.required],
-      cardType: ['credit'],
       issuer: ['', Validators.required],
       maskedNumber: ['', Validators.required],
       holderName: ['', Validators.required],
-      creditLimitCents: ['', [Validators.required, Validators.min(1000)]],
+      creditLimitCents: ['', [Validators.required, Validators.min(1)]],
+      cutoffDay: [15, [Validators.required, Validators.min(1), Validators.max(31)]],
+      paymentDueDay: [10, [Validators.required, Validators.min(1), Validators.max(31)]],
     });
 
     this.chargeForm = this.fb.group({
       description: ['', Validators.required],
       amountCents: ['', [Validators.required, Validators.min(1)]],
+      categoryId: ['', Validators.required],
       date: [new Date().toISOString().split('T')[0]],
       note: [''],
     });
@@ -81,16 +110,29 @@ export class CreditCardsComponent implements OnInit, OnDestroy {
       accountId: ['', Validators.required],
       note: [''],
     });
+
+    this.efForm = this.fb.group({
+      description: ['', Validators.required],
+      totalAmountCents: ['', [Validators.required, Validators.min(1)]],
+      totalInstallments: ['', [Validators.required, Validators.min(1)]],
+      paidInstallments: [0, [Validators.required, Validators.min(0)]],
+      categoryId: ['', Validators.required],
+      note: [''],
+    });
+
+    this.payCorteForm = this.fb.group({
+      accountId: ['', Validators.required],
+    });
   }
 
-  /**
-   * Load all cards
-   */
+  // ============================================
+  // Data loading
+  // ============================================
+
   private loadCards() {
     this.loading = true;
     this.error = null;
 
-    // Load cards
     this.creditCardsService
       .getCards()
       .pipe(takeUntil(this.destroy$))
@@ -99,14 +141,44 @@ export class CreditCardsComponent implements OnInit, OnDestroy {
           this.cards = response.cards;
           this.totalBalance = response.totalBalanceFormatted;
           this.loading = false;
+
+          // Detect if migration is needed (cards without cutoffDay set properly)
+          this.needsMigration = this.cards.some((c) => !c.cutoffDay || c.cutoffDay === 0);
+          if (this.needsMigration) {
+            // Pre-populate migration overrides with defaults
+            this.cards.forEach((c) => {
+              if (!this.migrationOverrides[c._id]) {
+                this.migrationOverrides[c._id] = {
+                  cutoffDay: c.cutoffDay || 15,
+                  paymentDueDay: c.paymentDueDay || 10,
+                };
+              }
+            });
+          }
+
+          // Refresh selected card if it exists
+          if (this.selectedCard) {
+            const refreshed = this.cards.find((c) => c._id === this.selectedCard!._id);
+            if (refreshed) {
+              this.selectedCard = refreshed;
+              // Refresh selected corte
+              if (this.selectedCorte) {
+                const refreshedCorte = refreshed.statementCycles.find(
+                  (c) => c._id === this.selectedCorte!._id,
+                );
+                this.selectedCorte = refreshedCorte || null;
+              }
+            }
+          }
         },
-        error: (err) => {
+        error: () => {
           this.error = 'Error cargando tarjetas';
           this.loading = false;
         },
       });
+  }
 
-    // Load accounts for payment dropdown
+  private loadAccounts() {
     this.accountsService
       .getAccounts()
       .pipe(takeUntil(this.destroy$))
@@ -114,15 +186,75 @@ export class CreditCardsComponent implements OnInit, OnDestroy {
         next: (response) => {
           this.accounts = response.accounts;
         },
-        error: () => {
-          // Silent fail for accounts
+        error: () => {},
+      });
+  }
+
+  private loadCategories() {
+    this.movementsService
+      .getCategories('expense')
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (response) => {
+          this.categories = response.categories;
+        },
+        error: () => {},
+      });
+  }
+
+  // ============================================
+  // Migration Sprint 5
+  // ============================================
+
+  runMigration() {
+    this.migrating = true;
+    this.error = null;
+    this.creditCardsService
+      .migrateSpring5(this.migrationOverrides)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (result) => {
+          this.migrating = false;
+          this.showMigrationForm = false;
+          this.success = result.message;
+          this.loadCards();
+        },
+        error: (err) => {
+          this.error = err.error?.message || 'Error en la migración';
+          this.migrating = false;
         },
       });
   }
 
-  /**
-   * Open/close dialogs
-   */
+  getMigrationKeys(): string[] {
+    return Object.keys(this.migrationOverrides);
+  }
+
+  getCardName(cardId: string): string {
+    return this.cards.find((c) => c._id === cardId)?.alias || cardId;
+  }
+
+  // ============================================
+  // Card selection
+  // ============================================
+
+  selectCard(card: CreditCard) {
+    this.selectedCard = card;
+    this.selectedCorte = null;
+    this.error = null;
+    this.success = null;
+  }
+
+  selectCorte(corte: CreditCardCorte) {
+    this.selectedCorte = corte;
+    this.error = null;
+    this.success = null;
+  }
+
+  // ============================================
+  // Dialog open/close
+  // ============================================
+
   openAddCardDialog() {
     this.showAddCardDialog = true;
     this.error = null;
@@ -130,13 +262,13 @@ export class CreditCardsComponent implements OnInit, OnDestroy {
 
   closeAddCardDialog() {
     this.showAddCardDialog = false;
-    this.cardForm.reset();
+    this.cardForm.reset({ cutoffDay: 15, paymentDueDay: 10 });
   }
 
   openAddChargeDialog() {
     if (!this.selectedCard || !this.selectedCorte) return;
     if (this.selectedCorte.status !== 'open') {
-      this.error = 'No se pueden agregar cargos a un corte cerrado';
+      this.error = 'Solo se pueden agregar cargos a un corte abierto';
       return;
     }
     this.showAddChargeDialog = true;
@@ -145,13 +277,13 @@ export class CreditCardsComponent implements OnInit, OnDestroy {
 
   closeAddChargeDialog() {
     this.showAddChargeDialog = false;
-    this.chargeForm.reset();
+    this.chargeForm.reset({ date: new Date().toISOString().split('T')[0] });
   }
 
   openPaymentDialog() {
     if (!this.selectedCard || !this.selectedCorte) return;
-    if (this.selectedCorte.status !== 'open') {
-      this.error = 'No se pueden agregar pagos a un corte cerrado';
+    if (this.selectedCorte.status === 'paid') {
+      this.error = 'Este corte ya está pagado';
       return;
     }
     this.showPaymentDialog = true;
@@ -160,12 +292,43 @@ export class CreditCardsComponent implements OnInit, OnDestroy {
 
   closePaymentDialog() {
     this.showPaymentDialog = false;
-    this.paymentForm.reset();
+    this.paymentForm.reset({ date: new Date().toISOString().split('T')[0] });
   }
 
-  /**
-   * Create a new credit card
-   */
+  openExtraFinanciamientoDialog() {
+    if (!this.selectedCard) return;
+    this.showExtraFinanciamientoDialog = true;
+    this.error = null;
+  }
+
+  closeExtraFinanciamientoDialog() {
+    this.showExtraFinanciamientoDialog = false;
+    this.efForm.reset();
+  }
+
+  openPayCorteDialog() {
+    if (!this.selectedCard || !this.selectedCorte) return;
+    if (this.selectedCorte.status === 'paid') {
+      this.error = 'Este corte ya está pagado';
+      return;
+    }
+    if (this.selectedCorte.balanceCents <= 0) {
+      this.error = 'No hay saldo a pagar en este corte';
+      return;
+    }
+    this.showPayCorteDialog = true;
+    this.error = null;
+  }
+
+  closePayCorteDialog() {
+    this.showPayCorteDialog = false;
+    this.payCorteForm.reset();
+  }
+
+  // ============================================
+  // CRUD Operations
+  // ============================================
+
   createCard() {
     if (!this.cardForm.valid) {
       this.error = 'Por favor completa todos los campos requeridos';
@@ -173,12 +336,8 @@ export class CreditCardsComponent implements OnInit, OnDestroy {
     }
 
     this.loading = true;
-    const formData = this.cardForm.value;
-
-    // Convert credit limit from Q to cents if needed
-    if (formData.creditLimitCents < 1000) {
-      formData.creditLimitCents = this.creditCardsService.toCents(formData.creditLimitCents);
-    }
+    const formData = { ...this.cardForm.value };
+    formData.creditLimitCents = this.creditCardsService.toCents(formData.creditLimitCents);
 
     this.creditCardsService
       .createCard(formData)
@@ -195,26 +354,6 @@ export class CreditCardsComponent implements OnInit, OnDestroy {
       });
   }
 
-  /**
-   * Select a card
-   */
-  selectCard(card: CreditCard) {
-    this.selectedCard = card;
-    this.selectedCorte = null;
-    this.error = null;
-  }
-
-  /**
-   * Select a corte
-   */
-  selectCorte(corte: CreditCardCorte) {
-    this.selectedCorte = corte;
-    this.error = null;
-  }
-
-  /**
-   * Add a charge
-   */
   addCharge() {
     if (!this.selectedCard || !this.selectedCorte) return;
     if (!this.chargeForm.valid) {
@@ -223,12 +362,8 @@ export class CreditCardsComponent implements OnInit, OnDestroy {
     }
 
     this.loading = true;
-    const formData = this.chargeForm.value;
-
-    // Convert amount if needed (assume it's in Q)
-    if (formData.amountCents < 100) {
-      formData.amountCents = this.creditCardsService.toCents(formData.amountCents);
-    }
+    const formData = { ...this.chargeForm.value };
+    formData.amountCents = this.creditCardsService.toCents(formData.amountCents);
 
     this.creditCardsService
       .recordCharge(this.selectedCard._id, this.selectedCorte._id, formData)
@@ -236,14 +371,10 @@ export class CreditCardsComponent implements OnInit, OnDestroy {
       .subscribe({
         next: (updatedCard) => {
           this.selectedCard = updatedCard;
-          // Update selected corte
-          const corte = updatedCard.statementCycles.find((c) => c._id === this.selectedCorte!._id);
-          if (corte) {
-            this.selectedCorte = corte;
-          }
+          this.selectedCorte =
+            updatedCard.statementCycles.find((c) => c._id === this.selectedCorte!._id) || null;
           this.closeAddChargeDialog();
           this.loadCards();
-          this.loading = false;
         },
         error: (err) => {
           this.error = err.error?.message || 'Error registrando cargo';
@@ -252,9 +383,6 @@ export class CreditCardsComponent implements OnInit, OnDestroy {
       });
   }
 
-  /**
-   * Record a payment
-   */
   recordPayment() {
     if (!this.selectedCard || !this.selectedCorte) return;
     if (!this.paymentForm.valid) {
@@ -263,12 +391,8 @@ export class CreditCardsComponent implements OnInit, OnDestroy {
     }
 
     this.loading = true;
-    const formData = this.paymentForm.value;
-
-    // Convert amount if needed
-    if (formData.amountCents < 100) {
-      formData.amountCents = this.creditCardsService.toCents(formData.amountCents);
-    }
+    const formData = { ...this.paymentForm.value };
+    formData.amountCents = this.creditCardsService.toCents(formData.amountCents);
 
     this.creditCardsService
       .recordPayment(this.selectedCard._id, this.selectedCorte._id, formData)
@@ -276,14 +400,10 @@ export class CreditCardsComponent implements OnInit, OnDestroy {
       .subscribe({
         next: (updatedCard) => {
           this.selectedCard = updatedCard;
-          // Update selected corte
-          const corte = updatedCard.statementCycles.find((c) => c._id === this.selectedCorte!._id);
-          if (corte) {
-            this.selectedCorte = corte;
-          }
+          this.selectedCorte =
+            updatedCard.statementCycles.find((c) => c._id === this.selectedCorte!._id) || null;
           this.closePaymentDialog();
           this.loadCards();
-          this.loading = false;
         },
         error: (err) => {
           this.error = err.error?.message || 'Error registrando pago';
@@ -292,48 +412,267 @@ export class CreditCardsComponent implements OnInit, OnDestroy {
       });
   }
 
-  /**
-   * Delete a charge
-   */
   deleteCharge(chargeId: string) {
     if (!this.selectedCard || !this.selectedCorte) return;
     if (!confirm('¿Estás seguro de que deseas eliminar este cargo?')) return;
 
+    this.loading = true;
     this.creditCardsService
       .deleteCharge(this.selectedCard._id, this.selectedCorte._id, chargeId)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (updatedCard) => {
           this.selectedCard = updatedCard;
-          const corte = updatedCard.statementCycles.find((c) => c._id === this.selectedCorte!._id);
-          if (corte) {
-            this.selectedCorte = corte;
-          }
+          this.selectedCorte =
+            updatedCard.statementCycles.find((c) => c._id === this.selectedCorte!._id) || null;
+          this.loadCards();
         },
         error: (err) => {
           this.error = err.error?.message || 'Error eliminando cargo';
+          this.loading = false;
         },
       });
   }
 
-  /**
-   * Format currency
-   */
+  deleteCard() {
+    if (!this.selectedCard) return;
+
+    const hasBalance = this.selectedCard.totalBalanceCents > 0;
+    let confirmMsg = `¿Eliminar la tarjeta "${this.selectedCard.alias}"?`;
+    if (hasBalance) {
+      confirmMsg += `\n\n⚠️ Esta tarjeta tiene un saldo de ${this.formatCurrency(this.selectedCard.totalBalanceCents)}`;
+    }
+
+    if (!confirm(confirmMsg)) return;
+
+    this.loading = true;
+    this.creditCardsService
+      .deleteCard(this.selectedCard._id)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: () => {
+          this.selectedCard = null;
+          this.selectedCorte = null;
+          this.loadCards();
+        },
+        error: (err) => {
+          this.error = err.error?.message || 'Error al eliminar la tarjeta';
+          this.loading = false;
+        },
+      });
+  }
+
+  // ============================================
+  // Corte lifecycle
+  // ============================================
+
+  closeCorte() {
+    if (!this.selectedCard) return;
+    const openCorte = this.selectedCard.statementCycles.find((c) => c.status === 'open');
+    if (!openCorte) {
+      this.error = 'No hay corte abierto';
+      return;
+    }
+
+    if (
+      !confirm(
+        `¿Cerrar el Corte #${openCorte.cycleNumber}?\n\nSe creará automáticamente el siguiente corte y se aplicarán las cuotas de extrafinanciamientos pendientes.`,
+      )
+    )
+      return;
+
+    this.loading = true;
+    this.creditCardsService
+      .closeCorte(this.selectedCard._id)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (updatedCard) => {
+          this.selectedCard = updatedCard;
+          this.selectedCorte = null;
+          this.success = 'Corte cerrado correctamente. Se creó el siguiente corte.';
+          this.loadCards();
+        },
+        error: (err) => {
+          this.error = err.error?.message || 'Error cerrando corte';
+          this.loading = false;
+        },
+      });
+  }
+
+  payCorte() {
+    if (!this.selectedCard || !this.selectedCorte) return;
+    if (!this.payCorteForm.valid) {
+      this.error = 'Selecciona una cuenta';
+      return;
+    }
+
+    const accountId = this.payCorteForm.value.accountId;
+    const account = this.accounts.find((a) => a._id === accountId);
+    const balance = this.selectedCorte.balanceCents;
+
+    if (!confirm(
+      `¿Pagar el Corte #${this.selectedCorte.cycleNumber} por ${this.formatCurrency(balance)}` +
+      `${account ? ` desde "${account.alias}"` : ''}?\n\n` +
+      `Se generarán movimientos de gasto por categoría.`,
+    ))
+      return;
+
+    this.loading = true;
+    this.creditCardsService
+      .payCorte(this.selectedCard._id, this.selectedCorte._id, accountId)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (updatedCard) => {
+          this.selectedCard = updatedCard;
+          this.selectedCorte =
+            updatedCard.statementCycles.find((c) => c._id === this.selectedCorte!._id) || null;
+          this.closePayCorteDialog();
+          this.success = `Corte pagado correctamente. Se generaron los movimientos de gasto.`;
+          this.loadCards();
+        },
+        error: (err) => {
+          this.error = err.error?.message || 'Error pagando corte';
+          this.loading = false;
+        },
+      });
+  }
+
+  // ============================================
+  // ExtraFinanciamientos
+  // ============================================
+
+  createExtraFinanciamiento() {
+    if (!this.selectedCard) return;
+    if (!this.efForm.valid) {
+      this.error = 'Por favor completa todos los campos requeridos';
+      return;
+    }
+
+    this.loading = true;
+    const formData = { ...this.efForm.value };
+    formData.totalAmountCents = this.creditCardsService.toCents(formData.totalAmountCents);
+
+    this.creditCardsService
+      .createExtraFinanciamiento(this.selectedCard._id, formData)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (updatedCard) => {
+          this.selectedCard = updatedCard;
+          if (this.selectedCorte) {
+            this.selectedCorte =
+              updatedCard.statementCycles.find((c) => c._id === this.selectedCorte!._id) || null;
+          }
+          this.closeExtraFinanciamientoDialog();
+          this.success = 'Extrafinanciamiento creado. La primera cuota se aplicó al corte abierto.';
+          this.loadCards();
+        },
+        error: (err) => {
+          this.error = err.error?.message || 'Error creando extrafinanciamiento';
+          this.loading = false;
+        },
+      });
+  }
+
+  // ============================================
+  // Computed helpers for EF preview
+  // ============================================
+
+  get efMonthlyPreview(): string {
+    const total = parseFloat(this.efForm.value.totalAmountCents || 0);
+    const installments = parseInt(this.efForm.value.totalInstallments || 0, 10);
+    if (total > 0 && installments > 0) {
+      return this.formatCurrency(this.creditCardsService.toCents(total / installments));
+    }
+    return '—';
+  }
+
+  get efNextInstallmentNumber(): number {
+    const paid = parseInt(this.efForm.value.paidInstallments || 0, 10);
+    return paid + 1;
+  }
+
+  get efRemainingInstallments(): number {
+    const total = parseInt(this.efForm.value.totalInstallments || 0, 10);
+    const paid = parseInt(this.efForm.value.paidInstallments || 0, 10);
+    return Math.max(0, total - paid);
+  }
+
+  get efRemainingAmount(): string {
+    const total = parseFloat(this.efForm.value.totalAmountCents || 0);
+    const totalInst = parseInt(this.efForm.value.totalInstallments || 0, 10);
+    const paid = parseInt(this.efForm.value.paidInstallments || 0, 10);
+    if (total > 0 && totalInst > 0) {
+      const remaining = (total / totalInst) * Math.max(0, totalInst - paid);
+      return this.formatCurrency(this.creditCardsService.toCents(remaining));
+    }
+    return '—';
+  }
+
+  // ============================================
+  // Corte helpers
+  // ============================================
+
+  getOpenCorte(): CreditCardCorte | undefined {
+    return this.selectedCard?.statementCycles.find((c) => c.status === 'open');
+  }
+
+  getSortedCortes(): CreditCardCorte[] {
+    if (!this.selectedCard) return [];
+    return [...this.selectedCard.statementCycles].sort(
+      (a, b) => b.cycleNumber - a.cycleNumber,
+    );
+  }
+
+  getActiveEFs(): ExtraFinanciamiento[] {
+    return this.selectedCard?.extraFinancings?.filter((e) => e.status === 'active') || [];
+  }
+
+  getAllEFs(): ExtraFinanciamiento[] {
+    return this.selectedCard?.extraFinancings || [];
+  }
+
+  getEFProgress(ef: ExtraFinanciamiento): number {
+    if (ef.totalInstallments === 0) return 0;
+    return Math.round((ef.paidInstallments / ef.totalInstallments) * 100);
+  }
+
+  getEFRemaining(ef: ExtraFinanciamiento): number {
+    return ef.totalInstallments - ef.paidInstallments;
+  }
+
+  getCategoryName(categoryId: any): string {
+    if (!categoryId) return 'Sin categoría';
+    if (typeof categoryId === 'object' && categoryId.name) return categoryId.name;
+    const cat = this.categories.find((c) => c._id === categoryId?.toString());
+    return cat?.name || 'Sin categoría';
+  }
+
+  // ============================================
+  // Formatting helpers
+  // ============================================
+
   formatCurrency(cents: number): string {
     return this.creditCardsService.formatCurrency(cents);
   }
 
-  /**
-   * Get status label
-   */
   getStatusLabel(status: string): string {
     return this.creditCardsService.getStatusLabel(status);
   }
 
-  /**
-   * Get status badge color
-   */
   getStatusColor(status: string): string {
     return this.creditCardsService.getStatusColor(status);
+  }
+
+  getStatusBadge(status: string): string {
+    return this.creditCardsService.getStatusBadge(status);
+  }
+
+  formatDate(date: Date | string | undefined): string {
+    if (!date) return '—';
+    return new Date(date).toLocaleDateString('es-GT', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
   }
 }

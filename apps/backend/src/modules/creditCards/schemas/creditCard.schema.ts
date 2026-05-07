@@ -2,7 +2,7 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
 /**
- * Charge subdocument - Represents a single charge/purchase on a credit card
+ * Charge subdocument - Cargo único o cuota de un extrafinanciamiento
  */
 @Schema({ _id: true })
 export class Charge {
@@ -17,8 +17,21 @@ export class Charge {
   @Prop({ required: true, default: () => new Date() })
   date!: Date;
 
-  @Prop({ type: Types.ObjectId, ref: 'Category' })
-  categoryId?: Types.ObjectId;
+  // Categoría OBLIGATORIA (Sprint 5)
+  @Prop({ required: true, type: Types.ObjectId, ref: 'Category' })
+  categoryId!: Types.ObjectId;
+
+  // Si este cargo proviene de un extrafinanciamiento
+  @Prop({ type: Types.ObjectId })
+  extraFinancingId?: Types.ObjectId;
+
+  // Número de cuota (1, 2, ..., N)
+  @Prop()
+  installmentNumber?: number;
+
+  // Total de cuotas (snapshot informativo)
+  @Prop()
+  totalInstallments?: number;
 
   @Prop({ default: '' })
   note?: string;
@@ -30,7 +43,7 @@ export class Charge {
 export const ChargeSchema = SchemaFactory.createForClass(Charge);
 
 /**
- * Payment subdocument - Represents a single payment against a statement cycle
+ * Payment subdocument - Pago realizado al corte (puede ser parcial o total)
  */
 @Schema({ _id: true })
 export class Payment {
@@ -55,12 +68,56 @@ export class Payment {
 export const PaymentSchema = SchemaFactory.createForClass(Payment);
 
 /**
- * CreditCardCorte - Statement cycle for a credit card
- * Tracks charges and payments for a billing period
+ * ExtraFinanciamiento subdocument - Compra a cuotas (Sprint 5)
+ */
+@Schema({ _id: true })
+export class ExtraFinanciamiento {
+  _id!: Types.ObjectId;
+
+  @Prop({ required: true })
+  description!: string;
+
+  @Prop({ required: true, min: 0 })
+  totalAmountCents!: number;
+
+  @Prop({ required: true, min: 1 })
+  totalInstallments!: number;
+
+  @Prop({ required: true, default: 0, min: 0 })
+  paidInstallments!: number;
+
+  @Prop({ required: true, min: 0 })
+  monthlyAmountCents!: number;
+
+  @Prop({ required: true, default: () => new Date() })
+  startDate!: Date;
+
+  @Prop({ required: true, type: Types.ObjectId, ref: 'Category' })
+  categoryId!: Types.ObjectId;
+
+  @Prop({ enum: ['active', 'completed'], default: 'active' })
+  status!: string;
+
+  // Track del último corte donde se aplicó cuota (para no duplicar)
+  @Prop()
+  lastAppliedCorteId?: Types.ObjectId;
+
+  @Prop({ default: '' })
+  note?: string;
+
+  @Prop({ default: () => new Date() })
+  createdAt?: Date;
+}
+
+export const ExtraFinanciamientoSchema = SchemaFactory.createForClass(ExtraFinanciamiento);
+
+/**
+ * CreditCardCorte - Estado de cuenta del período (Sprint 5)
  */
 @Schema({ _id: true })
 export class CreditCardCorte {
   _id!: Types.ObjectId;
+
   @Prop({ required: true })
   cycleNumber!: number;
 
@@ -70,7 +127,12 @@ export class CreditCardCorte {
   @Prop({ required: true })
   closingDate!: Date;
 
-  @Prop({ required: true })
+  // Fecha límite para pagar este corte (Sprint 5)
+  // default = closingDate como fallback para documentos migrados
+  @Prop({ default: null })
+  paymentDueDate!: Date;
+
+  @Prop({ default: 15 })
   cutoffDay!: number;
 
   @Prop({ type: [ChargeSchema], default: [] })
@@ -79,7 +141,6 @@ export class CreditCardCorte {
   @Prop({ type: [PaymentSchema], default: [] })
   payments!: Payment[];
 
-  // Balance tracking
   @Prop({ required: true, default: 0, min: 0 })
   chargesTotal!: number;
 
@@ -92,7 +153,8 @@ export class CreditCardCorte {
   @Prop({ required: true, default: 0, min: 0 })
   interestCents!: number;
 
-  @Prop({ enum: ['open', 'closing', 'closed'], default: 'open' })
+  // Status: 'open' (en curso) | 'closed_unpaid' (cerrado pendiente de pago) | 'paid' (pagado)
+  @Prop({ enum: ['open', 'closed_unpaid', 'paid'], default: 'open' })
   status!: string;
 
   @Prop({ default: false })
@@ -100,20 +162,25 @@ export class CreditCardCorte {
 
   @Prop()
   closedAt?: Date;
+
+  // Cuándo y desde qué cuenta se pagó (Sprint 5)
+  @Prop()
+  paidAt?: Date;
+
+  @Prop({ type: Types.ObjectId, ref: 'Account' })
+  paidFromAccountId?: Types.ObjectId;
 }
 
 export const CreditCardCorteSchema = SchemaFactory.createForClass(CreditCardCorte);
 
 /**
- * CreditCard - Main credit card document
- * Includes user's tarjeta with multiple statement cycles
+ * CreditCard - Tarjeta de crédito (Sprint 5)
  */
 @Schema({ timestamps: true })
 export class CreditCard extends Document {
   @Prop({ required: true, type: Types.ObjectId, ref: 'User' })
   userId!: Types.ObjectId;
 
-  // Card Identification
   @Prop({ required: true })
   alias!: string;
 
@@ -123,7 +190,6 @@ export class CreditCard extends Document {
   @Prop({ required: true })
   issuer!: string;
 
-  // Card Details (never store full number)
   @Prop({ required: true })
   maskedNumber!: string;
 
@@ -133,18 +199,26 @@ export class CreditCard extends Document {
   @Prop({ required: true, min: 0 })
   creditLimitCents!: number;
 
-  // Statement Cycles
+  // Configuración del ciclo (Sprint 5) — defaults para migración de datos existentes
+  @Prop({ min: 1, max: 31, default: 15 })
+  cutoffDay!: number;
+
+  @Prop({ min: 1, max: 31, default: 10 })
+  paymentDueDay!: number;
+
   @Prop({ type: [CreditCardCorteSchema], default: [] })
   statementCycles!: CreditCardCorte[];
 
-  // Balance Tracking
+  // Extrafinanciamientos / compras a cuotas (Sprint 5)
+  @Prop({ type: [ExtraFinanciamientoSchema], default: [] })
+  extraFinancings!: ExtraFinanciamiento[];
+
   @Prop({ required: true, default: 0, min: 0 })
   totalBalanceCents!: number;
 
   @Prop({ required: true, default: 0, min: 0 })
   availableCreditCents!: number;
 
-  // Status
   @Prop({ default: true })
   isActive!: boolean;
 
@@ -157,9 +231,9 @@ export class CreditCard extends Document {
 
 export const CreditCardSchema = SchemaFactory.createForClass(CreditCard);
 
-// Indices para mejor rendimiento
 CreditCardSchema.index({ userId: 1 });
 CreditCardSchema.index({ userId: 1, isActive: 1 });
 CreditCardSchema.index({ userId: 1, maskedNumber: 1 }, { unique: true });
 CreditCardSchema.index({ 'statementCycles.isClosed': 1 });
 CreditCardSchema.index({ 'statementCycles.openingDate': -1 });
+CreditCardSchema.index({ 'statementCycles.status': 1 });

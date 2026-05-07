@@ -19,6 +19,16 @@ export class CreditCardsController {
   constructor(private creditCardsService: CreditCardsService) {}
 
   /**
+   * POST /credit-cards/migrate-sprint5
+   * One-shot migration: patch existing cards with Sprint 5 fields.
+   * Body (optional): { cards: { "<cardId>": { cutoffDay: 15, paymentDueDay: 10 } } }
+   */
+  @Post('migrate-sprint5')
+  async migrateSpring5(@Body() body: any, @Req() req: any) {
+    return this.creditCardsService.migrateSpring5(req.user.userId, body?.cards);
+  }
+
+  /**
    * POST /credit-cards
    * Create a new credit card
    */
@@ -82,7 +92,6 @@ export class CreditCardsController {
    */
   @Put(':id')
   async updateCard(@Param('id') id: string, @Body() updateData: any, @Req() req: any) {
-    // Verify user owns this card
     await this.creditCardsService.findByIdAndUser(id, req.user.userId);
     return this.creditCardsService.updateCard(id, updateData);
   }
@@ -93,7 +102,6 @@ export class CreditCardsController {
    */
   @Delete(':id')
   async deleteCard(@Param('id') id: string, @Req() req: any) {
-    // Verify user owns this card
     await this.creditCardsService.findByIdAndUser(id, req.user.userId);
     return this.creditCardsService.deleteCard(id);
   }
@@ -138,6 +146,29 @@ export class CreditCardsController {
   @Get(':id/cortes/:corteId/statement')
   async getStatement(@Param('id') id: string, @Param('corteId') corteId: string, @Req() req: any) {
     return this.creditCardsService.getStatementDetail(req.user.userId, id, corteId);
+  }
+
+  /**
+   * POST /credit-cards/:id/cortes/close
+   * Close the current open corte and create the next one
+   */
+  @Post(':id/cortes/close')
+  async closeCorte(@Param('id') id: string, @Req() req: any) {
+    return this.creditCardsService.closeCurrentCorte(req.user.userId, id);
+  }
+
+  /**
+   * POST /credit-cards/:id/cortes/:corteId/pay
+   * Pay a corte in full from an account (generates expense movements by category)
+   */
+  @Post(':id/cortes/:corteId/pay')
+  async payCorte(
+    @Param('id') id: string,
+    @Param('corteId') corteId: string,
+    @Body() body: { accountId: string },
+    @Req() req: any,
+  ) {
+    return this.creditCardsService.payCorte(req.user.userId, id, corteId, body.accountId);
   }
 
   // ============================================
@@ -201,7 +232,7 @@ export class CreditCardsController {
 
   /**
    * POST /credit-cards/:id/cortes/:corteId/payments
-   * Record a payment against a statement cycle
+   * Record a partial payment against a statement cycle (legacy / parcial)
    */
   @Post(':id/cortes/:corteId/payments')
   @HttpCode(201)
@@ -234,5 +265,46 @@ export class CreditCardsController {
       total: payments.reduce((sum, p) => sum + p.amountCents, 0),
       totalFormatted: `Q${(payments.reduce((sum, p) => sum + p.amountCents, 0) / 100).toFixed(2)}`,
     };
+  }
+
+  // ============================================
+  // ExtraFinanciamientos Endpoints (Sprint 5)
+  // ============================================
+
+  /**
+   * GET /credit-cards/:id/extra-financings
+   * List all extra financings (compras a cuotas) for a card
+   */
+  @Get(':id/extra-financings')
+  async getExtraFinancings(@Param('id') id: string, @Req() req: any) {
+    const efs = await this.creditCardsService.getExtraFinancings(req.user.userId, id);
+    return { extraFinancings: efs, count: efs.length };
+  }
+
+  /**
+   * POST /credit-cards/:id/extra-financings
+   * Create a new extra financing (compra a cuotas)
+   */
+  @Post(':id/extra-financings')
+  @HttpCode(201)
+  async createExtraFinanciamiento(
+    @Param('id') id: string,
+    @Body() data: any,
+    @Req() req: any,
+  ) {
+    return this.creditCardsService.createExtraFinanciamiento(req.user.userId, id, data);
+  }
+
+  /**
+   * PUT /credit-cards/:id/extra-financings/:efId/cancel
+   * Mark an extra financing as completed/cancelled
+   */
+  @Put(':id/extra-financings/:efId/cancel')
+  async cancelExtraFinanciamiento(
+    @Param('id') id: string,
+    @Param('efId') efId: string,
+    @Req() req: any,
+  ) {
+    return this.creditCardsService.cancelExtraFinanciamiento(req.user.userId, id, efId);
   }
 }

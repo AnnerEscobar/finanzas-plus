@@ -1,0 +1,33 @@
+/* Closures Component Styles */
+
+.cursor-pointer {
+  transition: all 0.2s ease;
+}
+
+.cursor-pointer:hover {
+  transform: translateY(-2px);
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 768px) {
+  table {
+    font-size: 0.75rem;
+  }
+
+  table th,
+  table td {
+    padding: 0.4rem;
+  }
+}

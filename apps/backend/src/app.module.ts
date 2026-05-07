@@ -8,6 +8,7 @@ import { MovementsModule } from './modules/movements/movements.module';
 import { CreditCardsModule } from './modules/creditCards/creditCards.module';
 import { DebtsModule } from './modules/debts/debts.module';
 import { FundsModule } from './modules/funds/funds.module';
+import { DebtPlanModule } from './modules/debtPlan/debtPlan.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { ClosuresModule } from './modules/closures/closures.module';
 
@@ -22,6 +23,7 @@ import { ClosuresModule } from './modules/closures/closures.module';
     CreditCardsModule,
     DebtsModule,
     FundsModule,
+    DebtPlanModule,
     ReportsModule,
     ClosuresModule,
   ],

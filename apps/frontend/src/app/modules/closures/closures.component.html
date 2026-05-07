@@ -1,0 +1,270 @@
+<app-navbar></app-navbar>
+
+<div class="p-6 bg-gray-50 min-h-screen">
+  <!-- Header -->
+  <div class="mb-6">
+    <h1 class="text-3xl font-bold text-gray-900">Cierres Mensuales</h1>
+    <p class="text-gray-600 mt-1">Captura snapshots del estado financiero al final de cada mes</p>
+  </div>
+
+  <!-- Error / Success -->
+  <div *ngIf="error" class="mb-4 p-4 bg-red-100 text-red-700 rounded-lg">
+    {{ error }}
+  </div>
+  <div *ngIf="success" class="mb-4 p-4 bg-green-100 text-green-700 rounded-lg">
+    {{ success }}
+  </div>
+
+  <!-- Generate Closure -->
+  <div class="bg-white rounded-lg shadow p-6 mb-6">
+    <h2 class="text-lg font-bold text-gray-900 mb-4">Generar Nuevo Cierre</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+      <div>
+        <label class="block text-sm font-medium mb-1">Mes a Cerrar</label>
+        <input
+          type="month"
+          [(ngModel)]="monthToGenerate"
+          class="w-full px-3 py-2 border rounded"
+        />
+      </div>
+      <div class="md:col-span-2">
+        <button
+          (click)="generateClosure()"
+          [disabled]="loading"
+          class="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg disabled:opacity-50"
+        >
+          {{ loading ? 'Generando...' : 'Generar Cierre' }}
+        </button>
+      </div>
+    </div>
+    <p class="text-xs text-gray-500 mt-2">
+      El cierre captura el estado actual de cuentas, tarjetas, deudas y fondos. Solo se permite un cierre por mes.
+    </p>
+  </div>
+
+  <!-- Evolution Summary -->
+  <div *ngIf="evolution.length > 0" class="bg-white rounded-lg shadow p-6 mb-6">
+    <h2 class="text-lg font-bold text-gray-900 mb-4">Evolución Patrimonial</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b text-left">
+            <th class="p-2">Mes</th>
+            <th class="p-2 text-right">Activos</th>
+            <th class="p-2 text-right">Tarjetas</th>
+            <th class="p-2 text-right">Deudas</th>
+            <th class="p-2 text-right">Fondos</th>
+            <th class="p-2 text-right">Patrimonio Neto</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let point of evolution" class="border-b hover:bg-gray-50">
+            <td class="p-2 font-medium">{{ formatMonth(point.month) }}</td>
+            <td class="p-2 text-right text-green-600">{{ formatCurrency(point.totalAssetsCents) }}</td>
+            <td class="p-2 text-right text-orange-600">{{ formatCurrency(point.totalCreditCardDebtCents) }}</td>
+            <td class="p-2 text-right text-red-600">{{ formatCurrency(point.totalDebtCents) }}</td>
+            <td class="p-2 text-right text-blue-600">{{ formatCurrency(point.totalFundsCents) }}</td>
+            <td class="p-2 text-right font-bold" [ngClass]="getNetWorthColor(point.netWorthCents)">
+              {{ formatCurrency(point.netWorthCents) }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div *ngIf="loading && closures.length === 0" class="flex justify-center p-8">
+    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+  </div>
+
+  <!-- Closures Grid -->
+  <div *ngIf="!loading && closures.length === 0" class="bg-white rounded-lg shadow p-12 text-center">
+    <p class="text-gray-500 text-lg mb-2">No hay cierres generados</p>
+    <p class="text-sm text-gray-400">Genera tu primer cierre arriba</p>
+  </div>
+
+  <div *ngIf="closures.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+    <div
+      *ngFor="let closure of closures"
+      (click)="selectClosure(closure)"
+      class="bg-white p-5 rounded-lg shadow cursor-pointer transition border-2 hover:shadow-lg"
+      [class.border-blue-600]="selectedClosure?._id === closure._id"
+      [class.border-transparent]="selectedClosure?._id !== closure._id"
+    >
+      <div class="flex justify-between items-start mb-3">
+        <div>
+          <h3 class="font-bold text-gray-900">{{ formatMonth(closure.month) }}</h3>
+          <p class="text-xs text-gray-500">Generado: {{ closure.generatedAt | date: 'shortDate' }}</p>
+        </div>
+        <span
+          class="text-xs px-2 py-1 rounded"
+          [class.bg-blue-100]="closure.status === 'open'"
+          [class.text-blue-800]="closure.status === 'open'"
+          [class.bg-gray-100]="closure.status === 'closed'"
+          [class.text-gray-800]="closure.status === 'closed'"
+        >
+          {{ closure.status === 'open' ? 'Abierto' : 'Cerrado' }}
+        </span>
+      </div>
+
+      <div class="space-y-1">
+        <div class="flex justify-between text-sm">
+          <span class="text-gray-600">Patrimonio:</span>
+          <strong [ngClass]="getNetWorthColor(closure.summary.netWorthCents)">
+            {{ formatCurrency(closure.summary.netWorthCents) }}
+          </strong>
+        </div>
+        <div class="flex justify-between text-xs text-gray-500">
+          <span>Activos: {{ formatCurrency(closure.summary.totalAssetsCents) }}</span>
+          <span>Deudas: {{ formatCurrency(closure.summary.totalDebtCents + closure.summary.totalCreditCardDebtCents) }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Selected Closure Detail -->
+  <div *ngIf="selectedClosure" class="bg-white rounded-lg shadow-lg p-6">
+    <div class="flex justify-between items-start mb-6">
+      <div>
+        <h2 class="text-2xl font-bold text-gray-900">{{ formatMonth(selectedClosure.month) }}</h2>
+        <p class="text-sm text-gray-600">
+          Generado: {{ selectedClosure.generatedAt | date: 'medium' }}
+        </p>
+        <p *ngIf="selectedClosure.closedAt" class="text-sm text-gray-600">
+          Cerrado: {{ selectedClosure.closedAt | date: 'medium' }}
+        </p>
+        <span
+          class="inline-block mt-2 text-xs px-2 py-1 rounded"
+          [class.bg-blue-100]="selectedClosure.status === 'open'"
+          [class.text-blue-800]="selectedClosure.status === 'open'"
+          [class.bg-gray-100]="selectedClosure.status === 'closed'"
+          [class.text-gray-800]="selectedClosure.status === 'closed'"
+        >
+          {{ selectedClosure.status === 'open' ? 'Abierto' : 'Cerrado' }}
+        </span>
+      </div>
+
+      <div class="flex gap-2">
+        <button
+          *ngIf="selectedClosure.status === 'open'"
+          (click)="closeMonth()"
+          class="px-3 py-1 bg-gray-700 hover:bg-gray-800 text-white rounded text-sm"
+        >
+          Cerrar Mes
+        </button>
+        <button
+          *ngIf="selectedClosure.status === 'closed'"
+          (click)="reopenMonth()"
+          class="px-3 py-1 border border-blue-300 text-blue-600 rounded text-sm hover:bg-blue-50"
+        >
+          Reabrir
+        </button>
+        <button
+          *ngIf="selectedClosure.status === 'open'"
+          (click)="deleteClosure()"
+          class="px-3 py-1 border border-red-300 text-red-600 rounded text-sm hover:bg-red-50"
+        >
+          Eliminar
+        </button>
+      </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+      <div class="bg-green-50 border border-green-200 p-3 rounded">
+        <p class="text-xs text-green-700">Activos</p>
+        <p class="text-lg font-bold text-green-800">{{ formatCurrency(selectedClosure.summary.totalAssetsCents) }}</p>
+      </div>
+      <div class="bg-blue-50 border border-blue-200 p-3 rounded">
+        <p class="text-xs text-blue-700">Fondos</p>
+        <p class="text-lg font-bold text-blue-800">{{ formatCurrency(selectedClosure.summary.totalFundsCents) }}</p>
+      </div>
+      <div class="bg-orange-50 border border-orange-200 p-3 rounded">
+        <p class="text-xs text-orange-700">Tarjetas</p>
+        <p class="text-lg font-bold text-orange-800">{{ formatCurrency(selectedClosure.summary.totalCreditCardDebtCents) }}</p>
+      </div>
+      <div class="bg-red-50 border border-red-200 p-3 rounded">
+        <p class="text-xs text-red-700">Deudas</p>
+        <p class="text-lg font-bold text-red-800">{{ formatCurrency(selectedClosure.summary.totalDebtCents) }}</p>
+      </div>
+      <div class="bg-purple-50 border-2 border-purple-300 p-3 rounded">
+        <p class="text-xs text-purple-700">Patrimonio Neto</p>
+        <p class="text-lg font-bold" [ngClass]="getNetWorthColor(selectedClosure.summary.netWorthCents)">
+          {{ formatCurrency(selectedClosure.summary.netWorthCents) }}
+        </p>
+      </div>
+    </div>
+
+    <!-- Snapshots -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <!-- Cuentas -->
+      <div class="border rounded p-4">
+        <h3 class="font-bold mb-3 text-gray-900">Cuentas ({{ selectedClosure.accountSnapshots.length }})</h3>
+        <div *ngIf="selectedClosure.accountSnapshots.length === 0" class="text-sm text-gray-500">
+          Sin cuentas registradas
+        </div>
+        <table *ngIf="selectedClosure.accountSnapshots.length > 0" class="w-full text-sm">
+          <tbody>
+            <tr *ngFor="let acc of selectedClosure.accountSnapshots" class="border-b last:border-b-0">
+              <td class="py-1">{{ acc.alias }}</td>
+              <td class="py-1 text-right font-bold text-green-600">{{ formatCurrency(acc.balanceCents) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Tarjetas -->
+      <div class="border rounded p-4">
+        <h3 class="font-bold mb-3 text-gray-900">Tarjetas ({{ selectedClosure.creditCardSnapshots.length }})</h3>
+        <div *ngIf="selectedClosure.creditCardSnapshots.length === 0" class="text-sm text-gray-500">
+          Sin tarjetas registradas
+        </div>
+        <table *ngIf="selectedClosure.creditCardSnapshots.length > 0" class="w-full text-sm">
+          <tbody>
+            <tr *ngFor="let card of selectedClosure.creditCardSnapshots" class="border-b last:border-b-0">
+              <td class="py-1">{{ card.alias }}</td>
+              <td class="py-1 text-right font-bold text-orange-600">{{ formatCurrency(card.totalBalanceCents) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Deudas -->
+      <div class="border rounded p-4">
+        <h3 class="font-bold mb-3 text-gray-900">Deudas ({{ selectedClosure.debtSnapshots.length }})</h3>
+        <div *ngIf="selectedClosure.debtSnapshots.length === 0" class="text-sm text-gray-500">
+          Sin deudas registradas
+        </div>
+        <table *ngIf="selectedClosure.debtSnapshots.length > 0" class="w-full text-sm">
+          <tbody>
+            <tr *ngFor="let debt of selectedClosure.debtSnapshots" class="border-b last:border-b-0">
+              <td class="py-1">{{ debt.alias }}</td>
+              <td class="py-1 text-right font-bold text-red-600">{{ formatCurrency(debt.remainingCents) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Fondos -->
+      <div class="border rounded p-4">
+        <h3 class="font-bold mb-3 text-gray-900">Fondos ({{ selectedClosure.fundSnapshots.length }})</h3>
+        <div *ngIf="selectedClosure.fundSnapshots.length === 0" class="text-sm text-gray-500">
+          Sin fondos registrados
+        </div>
+        <table *ngIf="selectedClosure.fundSnapshots.length > 0" class="w-full text-sm">
+          <tbody>
+            <tr *ngFor="let fund of selectedClosure.fundSnapshots" class="border-b last:border-b-0">
+              <td class="py-1">{{ fund.alias }}</td>
+              <td class="py-1 text-right font-bold text-blue-600">{{ formatCurrency(fund.currentAmountCents) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div *ngIf="selectedClosure.note" class="mt-6 bg-yellow-50 border border-yellow-200 p-3 rounded text-sm">
+      <strong>Nota:</strong> {{ selectedClosure.note }}
+    </div>
+  </div>
+</div>
