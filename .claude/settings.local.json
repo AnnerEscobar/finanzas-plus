@@ -57,7 +57,9 @@
       "Read(//tmp/**)",
       "Bash(ng serve *)",
       "Bash(npx tsc *)",
-      "Bash(grep -v \"^$\")"
+      "Bash(grep -v \"^$\")",
+      "Bash(gh --version)",
+      "mcp__Claude_in_Chrome__tabs_context_mcp"
     ]
   }
 }
