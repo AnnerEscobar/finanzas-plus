@@ -1,0 +1,180 @@
+<app-navbar></app-navbar>
+
+<div class="p-6 bg-gray-50 min-h-screen">
+
+  <!-- Header -->
+  <div class="flex justify-between items-center mb-6">
+    <div>
+      <h1 class="text-3xl font-bold text-gray-900">🏷️ Categorías</h1>
+      <p class="text-sm text-gray-500 mt-1">Administra las categorías de tus ingresos y gastos</p>
+    </div>
+    <button
+      (click)="openForm()"
+      class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition"
+    >
+      + Nueva Categoría
+    </button>
+  </div>
+
+  <!-- Success -->
+  <div *ngIf="successMsg" class="mb-4 p-4 bg-green-100 text-green-800 rounded-lg flex items-center gap-2">
+    ✅ {{ successMsg }}
+  </div>
+
+  <!-- Error -->
+  <div *ngIf="error" class="mb-4 p-4 bg-red-100 text-red-700 rounded-lg flex items-center gap-2">
+    ⚠️ {{ error }}
+    <button (click)="error=''" class="ml-auto text-red-500 hover:text-red-700 font-bold">✕</button>
+  </div>
+
+  <!-- New category form -->
+  <div *ngIf="showForm" class="bg-white rounded-lg shadow-lg p-6 mb-6 border-l-4 border-blue-500">
+    <h2 class="text-lg font-semibold text-gray-800 mb-4">Nueva Categoría</h2>
+    <form [formGroup]="categoryForm" (ngSubmit)="saveCategory()" class="flex flex-col sm:flex-row gap-3">
+      <div class="flex-1">
+        <label class="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+        <input
+          formControlName="name"
+          type="text"
+          placeholder="Ej: Transporte, Ropa, Mascota..."
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <p *ngIf="categoryForm.get('name')?.touched && categoryForm.get('name')?.invalid"
+           class="text-red-500 text-xs mt-1">Mínimo 2 caracteres</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
+        <select
+          formControlName="type"
+          class="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="expense">💸 Gasto</option>
+          <option value="income">💵 Ingreso</option>
+        </select>
+      </div>
+      <div class="flex items-end gap-2">
+        <button
+          type="submit"
+          [disabled]="categoryForm.invalid || saving"
+          class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white px-5 py-2 rounded-lg font-medium transition"
+        >
+          {{ saving ? 'Guardando...' : 'Guardar' }}
+        </button>
+        <button
+          type="button"
+          (click)="closeForm()"
+          class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-5 py-2 rounded-lg font-medium transition"
+        >
+          Cancelar
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Tabs -->
+  <div class="flex gap-2 mb-4">
+    <button
+      (click)="setTab('expense')"
+      class="px-5 py-2 rounded-lg font-medium transition"
+      [class.bg-red-600]="activeTab === 'expense'"
+      [class.text-white]="activeTab === 'expense'"
+      [class.bg-white]="activeTab !== 'expense'"
+      [class.text-gray-700]="activeTab !== 'expense'"
+      [class.shadow]="activeTab !== 'expense'"
+    >
+      💸 Gastos ({{ expenseCategories.length }})
+    </button>
+    <button
+      (click)="setTab('income')"
+      class="px-5 py-2 rounded-lg font-medium transition"
+      [class.bg-green-600]="activeTab === 'income'"
+      [class.text-white]="activeTab === 'income'"
+      [class.bg-white]="activeTab !== 'income'"
+      [class.text-gray-700]="activeTab !== 'income'"
+      [class.shadow]="activeTab !== 'income'"
+    >
+      💵 Ingresos ({{ incomeCategories.length }})
+    </button>
+  </div>
+
+  <!-- Loading -->
+  <div *ngIf="loading" class="flex justify-center p-12">
+    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+  </div>
+
+  <!-- Empty -->
+  <div *ngIf="!loading && currentCategories.length === 0" class="bg-white rounded-lg shadow p-12 text-center">
+    <p class="text-5xl mb-3">🏷️</p>
+    <p class="text-gray-500 mb-4">No hay categorías de {{ activeTab === 'expense' ? 'gastos' : 'ingresos' }}</p>
+    <button (click)="openForm()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg">
+      Crear categoría
+    </button>
+  </div>
+
+  <!-- Category list -->
+  <div *ngIf="!loading && currentCategories.length > 0" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+
+    <div
+      *ngFor="let cat of currentCategories"
+      class="bg-white rounded-lg shadow p-4 flex items-center gap-3 transition hover:shadow-md"
+    >
+      <!-- Icon / badge -->
+      <div
+        class="w-10 h-10 rounded-full flex items-center justify-center text-lg flex-shrink-0"
+        [class.bg-red-100]="cat.type === 'expense'"
+        [class.bg-green-100]="cat.type === 'income'"
+      >
+        {{ cat.type === 'expense' ? '💸' : '💵' }}
+      </div>
+
+      <!-- Name (normal or editing) -->
+      <div class="flex-1 min-w-0">
+        <div *ngIf="editingCategory?._id !== cat._id">
+          <p class="font-medium text-gray-900 truncate">{{ cat.name }}</p>
+          <p class="text-xs text-gray-400 mt-0.5">
+            {{ cat.isDefault ? '⭐ Predeterminada' : '✏️ Personalizada' }}
+          </p>
+        </div>
+        <div *ngIf="editingCategory?._id === cat._id" class="flex gap-2">
+          <input
+            [(ngModel)]="editName"
+            class="flex-1 border border-blue-400 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            (keydown.enter)="saveEdit()"
+            (keydown.escape)="cancelEdit()"
+            autofocus
+          />
+          <button (click)="saveEdit()" class="text-green-600 hover:text-green-800 font-bold text-sm">✓</button>
+          <button (click)="cancelEdit()" class="text-gray-400 hover:text-gray-600 text-sm">✕</button>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div *ngIf="editingCategory?._id !== cat._id" class="flex gap-1 flex-shrink-0">
+        <button
+          (click)="startEdit(cat)"
+          title="Editar nombre"
+          class="p-1.5 text-blue-500 hover:bg-blue-50 rounded transition"
+        >
+          ✏️
+        </button>
+        <button
+          *ngIf="!cat.isDefault"
+          (click)="deleteCategory(cat)"
+          title="Eliminar"
+          class="p-1.5 text-red-400 hover:bg-red-50 rounded transition"
+        >
+          🗑️
+        </button>
+        <div *ngIf="cat.isDefault" class="w-7"></div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- Tip -->
+  <p class="text-xs text-gray-400 mt-6 text-center">
+    ⭐ Las categorías predeterminadas no se pueden eliminar, pero sí editar su nombre. Las personalizadas se pueden eliminar.
+  </p>
+
+</div>

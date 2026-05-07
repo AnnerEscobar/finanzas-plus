@@ -150,6 +150,37 @@ export class CategoriesService {
   }
 
   /**
+   * Eliminar duplicados: por cada combinación (name + type), conserva el primero
+   * (preferendo isDefault) y desactiva los demás
+   */
+  async deduplicateCategories(userId: string) {
+    const all = await this.categoryModel
+      .find({ userId, isActive: true })
+      .sort({ isDefault: -1, createdAt: 1 });
+
+    const seen = new Map<string, string>(); // key => _id kept
+    const toDeactivate: string[] = [];
+
+    for (const cat of all) {
+      const key = `${cat.type}__${cat.name.toLowerCase().trim()}`;
+      if (seen.has(key)) {
+        toDeactivate.push((cat._id as any).toString());
+      } else {
+        seen.set(key, (cat._id as any).toString());
+      }
+    }
+
+    if (toDeactivate.length > 0) {
+      await this.categoryModel.updateMany(
+        { _id: { $in: toDeactivate }, userId },
+        { isActive: false },
+      );
+    }
+
+    return { removed: toDeactivate.length };
+  }
+
+  /**
    * Desactivar categoría (soft delete)
    * No permite eliminar categorías default
    */

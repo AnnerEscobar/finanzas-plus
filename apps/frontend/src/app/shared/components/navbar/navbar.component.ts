@@ -23,6 +23,7 @@ export class NavbarComponent {
     { label: 'Plan Deuda Cero', route: '/debt-plan', icon: '🎯' },
     { label: 'Cierres', route: '/closures', icon: '📅' },
     { label: 'Reportes', route: '/reports', icon: '📈' },
+    { label: 'Categorías', route: '/categories', icon: '🏷️' },
   ];
 
   constructor(private authService: AuthService, private router: Router) {}

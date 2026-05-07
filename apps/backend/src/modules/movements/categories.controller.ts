@@ -51,6 +51,16 @@ export class CategoriesController {
   }
 
   /**
+   * POST /categories/deduplicate
+   * Elimina duplicados conservando el primero de cada (name+type)
+   */
+  @Post('deduplicate')
+  @HttpCode(200)
+  async deduplicate(@Req() req: any) {
+    return this.categoriesService.deduplicateCategories(req.user.userId);
+  }
+
+  /**
    * PUT /categories/:id
    */
   @Put(':id')

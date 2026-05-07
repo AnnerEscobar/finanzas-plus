@@ -125,6 +125,10 @@ export class MovementsService {
     return this.apiService.post('categories/ensure-defaults', {});
   }
 
+  deduplicateCategories(): Observable<{ removed: number }> {
+    return this.apiService.post('categories/deduplicate', {});
+  }
+
   updateCategory(id: string, data: any): Observable<Category> {
     return this.apiService.put(`categories/${id}`, data);
   }
