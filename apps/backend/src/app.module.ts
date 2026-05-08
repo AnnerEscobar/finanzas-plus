@@ -11,8 +11,6 @@ import { FundsModule } from './modules/funds/funds.module';
 import { DebtPlanModule } from './modules/debtPlan/debtPlan.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { ClosuresModule } from './modules/closures/closures.module';
-import { MigrationModule } from './modules/migration/migration.module';
-
 @Module({
   imports: [
     ConfigModule.forRoot(),
@@ -27,7 +25,6 @@ import { MigrationModule } from './modules/migration/migration.module';
     DebtPlanModule,
     ReportsModule,
     ClosuresModule,
-    MigrationModule,
   ],
 })
 export class AppModule {}
