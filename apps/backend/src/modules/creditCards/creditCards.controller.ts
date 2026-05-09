@@ -158,6 +158,21 @@ export class CreditCardsController {
   }
 
   /**
+   * POST /credit-cards/:id/cortes/:corteId/abonar
+   * Registrar un abono parcial al corte (descuenta de cuenta, no genera movimientos de gasto)
+   */
+  @Post(':id/cortes/:corteId/abonar')
+  @HttpCode(200)
+  async abonarCorte(
+    @Param('id') id: string,
+    @Param('corteId') corteId: string,
+    @Body() body: { accountId: string; amountCents: number; date?: string; note?: string },
+    @Req() req: any,
+  ) {
+    return this.creditCardsService.abonarCorte(req.user.userId, id, corteId, body);
+  }
+
+  /**
    * POST /credit-cards/:id/cortes/:corteId/pay
    * Pay a corte in full from an account (generates expense movements by category)
    */

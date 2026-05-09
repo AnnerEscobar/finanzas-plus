@@ -551,6 +551,68 @@ export class CreditCardsService {
   }
 
   // ==========================================================================
+  // ABONO PARCIAL AL CORTE
+  // ==========================================================================
+
+  /**
+   * Registrar un abono parcial a un corte cerrado.
+   * - Descuenta el monto de la cuenta seleccionada
+   * - Agrega el pago a corte.payments
+   * - El corte sigue en 'closed_unpaid' hasta que balanceCents llegue a 0
+   * - NO genera movimientos de gasto (eso ocurre al pagar el corte completo)
+   */
+  async abonarCorte(userId: string, cardId: string, corteId: string, data: any) {
+    const card = await this.findByIdAndUser(cardId, userId);
+
+    const corte = card.statementCycles.find((c) => c._id.toString() === corteId);
+    if (!corte) {
+      throw new NotFoundException('Corte no encontrado');
+    }
+    if (corte.status === 'paid') {
+      throw new BadRequestException('Este corte ya está completamente pagado');
+    }
+    if (corte.status === 'open') {
+      throw new BadRequestException('No se puede abonar a un corte abierto. Cierra el corte primero.');
+    }
+
+    const amountCents: number = data.amountCents;
+    if (!amountCents || amountCents <= 0) {
+      throw new BadRequestException('El monto del abono debe ser mayor a 0');
+    }
+    if (amountCents > corte.balanceCents) {
+      throw new BadRequestException(
+        `El abono (${(amountCents / 100).toFixed(2)}) supera el saldo pendiente del corte (${(corte.balanceCents / 100).toFixed(2)})`,
+      );
+    }
+
+    // Validar cuenta y saldo disponible
+    const account = await this.accountsService.findByIdAndUser(data.accountId, userId);
+    if (account.currentBalanceCents < amountCents) {
+      throw new BadRequestException(
+        `Saldo insuficiente en "${account.alias}". Disponible: Q${(account.currentBalanceCents / 100).toFixed(2)}`,
+      );
+    }
+
+    // Descontar de la cuenta
+    await this.accountsService.decreaseBalance(data.accountId, amountCents);
+
+    // Registrar el abono en el corte
+    const payment: any = {
+      amountCents,
+      date: data.date ? new Date(data.date) : new Date(),
+      accountId: new Types.ObjectId(data.accountId),
+      note: data.note || 'Abono parcial',
+      createdAt: new Date(),
+    };
+    corte.payments.push(payment);
+
+    this.recalculateCorteTotals(corte);
+    this.recalculateCardTotals(card);
+
+    return card.save();
+  }
+
+  // ==========================================================================
   // PAGAR CORTE COMPLETO (Sprint 5)
   // ==========================================================================
 

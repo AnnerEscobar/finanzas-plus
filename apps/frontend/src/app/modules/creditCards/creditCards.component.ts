@@ -46,6 +46,7 @@ export class CreditCardsComponent implements OnInit, OnDestroy {
   showPaymentDialog = false;
   showExtraFinanciamientoDialog = false;
   showPayCorteDialog = false;
+  showAbonarDialog = false;
 
   // Forms
   cardForm!: FormGroup;
@@ -53,6 +54,7 @@ export class CreditCardsComponent implements OnInit, OnDestroy {
   paymentForm!: FormGroup;
   efForm!: FormGroup;
   payCorteForm!: FormGroup;
+  abonarForm!: FormGroup;
 
   // Lookup data
   accounts: any[] = [];
@@ -62,7 +64,7 @@ export class CreditCardsComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
 
   constructor(
-    private creditCardsService: CreditCardsService,
+    public creditCardsService: CreditCardsService,
     private accountsService: AccountsService,
     private movementsService: MovementsService,
     private fb: FormBuilder,
@@ -122,6 +124,13 @@ export class CreditCardsComponent implements OnInit, OnDestroy {
 
     this.payCorteForm = this.fb.group({
       accountId: ['', Validators.required],
+    });
+
+    this.abonarForm = this.fb.group({
+      amountCents: ['', [Validators.required, Validators.min(0.01)]],
+      accountId: ['', Validators.required],
+      date: [new Date().toISOString().split('T')[0]],
+      note: [''],
     });
   }
 
@@ -323,6 +332,22 @@ export class CreditCardsComponent implements OnInit, OnDestroy {
   closePayCorteDialog() {
     this.showPayCorteDialog = false;
     this.payCorteForm.reset();
+  }
+
+  openAbonarDialog() {
+    if (!this.selectedCard || !this.selectedCorte) return;
+    if (this.selectedCorte.status !== 'closed_unpaid') {
+      this.error = 'Solo se pueden registrar abonos en cortes cerrados pendientes de pago';
+      return;
+    }
+    this.showAbonarDialog = true;
+    this.error = null;
+    this.abonarForm.reset({ date: new Date().toISOString().split('T')[0], note: '' });
+  }
+
+  closeAbonarDialog() {
+    this.showAbonarDialog = false;
+    this.abonarForm.reset();
   }
 
   // ============================================
@@ -532,6 +557,54 @@ export class CreditCardsComponent implements OnInit, OnDestroy {
         },
         error: (err) => {
           this.error = err.error?.message || 'Error pagando corte';
+          this.loading = false;
+        },
+      });
+  }
+
+  // ============================================
+  // Abono parcial
+  // ============================================
+
+  submitAbono() {
+    if (!this.selectedCard || !this.selectedCorte) return;
+    if (!this.abonarForm.valid) {
+      this.error = 'Por favor completa los datos requeridos';
+      return;
+    }
+
+    const formData = { ...this.abonarForm.value };
+    formData.amountCents = this.creditCardsService.toCents(formData.amountCents);
+
+    const account = this.accounts.find((a) => a._id === formData.accountId);
+    const balancePendiente = this.selectedCorte.balanceCents;
+
+    if (formData.amountCents > balancePendiente) {
+      this.error = `El abono supera el saldo pendiente del corte (${this.formatCurrency(balancePendiente)})`;
+      return;
+    }
+
+    if (!confirm(
+      `¿Registrar abono de ${this.formatCurrency(formData.amountCents)} al Corte #${this.selectedCorte.cycleNumber}` +
+      `${account ? ` desde "${account.alias}"` : ''}?\n\n` +
+      `Saldo pendiente después del abono: ${this.formatCurrency(balancePendiente - formData.amountCents)}`
+    )) return;
+
+    this.loading = true;
+    this.creditCardsService
+      .abonarCorte(this.selectedCard._id, this.selectedCorte._id, formData)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (updatedCard) => {
+          this.selectedCard = updatedCard;
+          this.selectedCorte =
+            updatedCard.statementCycles.find((c) => c._id === this.selectedCorte!._id) || null;
+          this.closeAbonarDialog();
+          this.success = `Abono registrado. Saldo pendiente: ${this.formatCurrency(this.selectedCorte?.balanceCents ?? 0)}`;
+          this.loadCards();
+        },
+        error: (err) => {
+          this.error = err.error?.message || 'Error registrando abono';
           this.loading = false;
         },
       });

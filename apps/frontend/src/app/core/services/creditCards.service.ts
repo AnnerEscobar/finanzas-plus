@@ -146,6 +146,11 @@ export class CreditCardsService {
     return this.apiService.post<CreditCard>(`credit-cards/${cardId}/cortes/${corteId}/pay`, { accountId });
   }
 
+  /** Registrar abono parcial al corte (descuenta cuenta, no genera gastos aún) */
+  abonarCorte(cardId: string, corteId: string, data: { accountId: string; amountCents: number; date?: string; note?: string }): Observable<CreditCard> {
+    return this.apiService.post<CreditCard>(`credit-cards/${cardId}/cortes/${corteId}/abonar`, data);
+  }
+
   // ============================================
   // Charges Operations
   // ============================================
