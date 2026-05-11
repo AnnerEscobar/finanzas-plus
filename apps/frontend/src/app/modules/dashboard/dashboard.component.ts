@@ -33,19 +33,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
   loading: boolean = true;
   error: string = '';
 
-  // Chart data - Balance trend (mock data for Sprint 1)
+  // Chart data - Balance trend (populated from API)
   balanceTrendChartData: ChartData<'line'> = {
-    labels: ['Ene', 'Feb', 'Mar', 'Abr', 'May'],
-    datasets: [
-      {
-        label: 'Saldo Disponible',
-        data: [250000, 280000, 310000, 290000, 350000],
-        borderColor: '#10b981',
-        backgroundColor: 'rgba(16, 185, 129, 0.1)',
-        fill: true,
-        tension: 0.4,
-      },
-    ],
+    labels: [],
+    datasets: [],
   };
 
   balanceTrendChartOptions: ChartConfiguration<'line'>['options'] = {
@@ -56,31 +47,29 @@ export class DashboardComponent implements OnInit, OnDestroy {
         display: true,
         position: 'top',
       },
+      tooltip: {
+        callbacks: {
+          label: (ctx) => {
+            const val = ctx.parsed.y as number;
+            return ` ${ctx.dataset.label}: Q${val.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+          },
+        },
+      },
     },
     scales: {
       y: {
-        beginAtZero: true,
+        beginAtZero: false,
+        ticks: {
+          callback: (value) => `Q${Number(value).toLocaleString('es-GT', { minimumFractionDigits: 0 })}`,
+        },
       },
     },
   };
 
-  // Chart data - Expense by category (mock data for Sprint 1)
+  // Chart data - Expense by category (populated from API)
   expenseByCategoryChartData: ChartData<'doughnut'> = {
-    labels: ['Comida', 'Servicios', 'Entretenimiento', 'Salud', 'Otros'],
-    datasets: [
-      {
-        data: [1200, 800, 600, 400, 300],
-        backgroundColor: [
-          '#f87171',
-          '#fbbf24',
-          '#60a5fa',
-          '#34d399',
-          '#a78bfa',
-        ],
-        borderColor: '#fff',
-        borderWidth: 2,
-      },
-    ],
+    labels: [],
+    datasets: [{ data: [], backgroundColor: [], borderColor: '#fff', borderWidth: 2 }],
   };
 
   expenseByCategoryChartOptions: ChartConfiguration<'doughnut'>['options'] = {
@@ -94,23 +83,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
     },
   };
 
-  // Chart data - Income vs Expense (mock data for Sprint 1)
+  // Chart data - Income vs Expense (populated from API)
   incomeVsExpenseChartData: ChartData<'bar'> = {
-    labels: ['Ene', 'Feb', 'Mar', 'Abr', 'May'],
-    datasets: [
-      {
-        label: 'Ingresos',
-        data: [300000, 300000, 350000, 300000, 350000],
-        backgroundColor: '#10b981',
-        borderRadius: 4,
-      },
-      {
-        label: 'Gastos',
-        data: [120000, 95000, 140000, 110000, 105000],
-        backgroundColor: '#ef4444',
-        borderRadius: 4,
-      },
-    ],
+    labels: [],
+    datasets: [],
   };
 
   incomeVsExpenseChartOptions: ChartConfiguration<'bar'>['options'] = {
@@ -121,10 +97,21 @@ export class DashboardComponent implements OnInit, OnDestroy {
         display: true,
         position: 'top',
       },
+      tooltip: {
+        callbacks: {
+          label: (ctx) => {
+            const val = ctx.parsed.y as number;
+            return ` ${ctx.dataset.label}: Q${val.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+          },
+        },
+      },
     },
     scales: {
       y: {
         beginAtZero: true,
+        ticks: {
+          callback: (value) => `Q${Number(value).toLocaleString('es-GT', { minimumFractionDigits: 0 })}`,
+        },
       },
     },
   };
@@ -241,12 +228,25 @@ export class DashboardComponent implements OnInit, OnDestroy {
               labels: data.labels,
               datasets: [
                 {
+                  label: 'Saldo Disponible',
+                  data: data.assets,
+                  borderColor: '#10b981',
+                  backgroundColor: 'rgba(16, 185, 129, 0.08)',
+                  fill: false,
+                  tension: 0.3,
+                  pointRadius: 5,
+                  pointHoverRadius: 7,
+                },
+                {
                   label: 'Patrimonio Neto',
                   data: data.netWorth,
                   borderColor: '#7C3AED',
-                  backgroundColor: 'rgba(124, 58, 237, 0.15)',
+                  backgroundColor: 'rgba(124, 58, 237, 0.10)',
                   fill: true,
                   tension: 0.3,
+                  pointRadius: 5,
+                  pointHoverRadius: 7,
+                  borderDash: [5, 3],
                 },
               ],
             };

@@ -104,46 +104,64 @@
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <!-- Balance Trend Chart -->
         <div class="bg-white rounded-lg shadow-md p-6">
-          <h2 class="text-lg font-bold text-gray-900 mb-4">Tendencia de Saldo</h2>
+          <h2 class="text-lg font-bold text-gray-900 mb-1">Tendencia de Saldo</h2>
+          <p class="text-xs text-gray-400 mb-4">Saldo disponible y patrimonio neto — crece con cada cierre mensual</p>
           <div class="relative h-64">
             <canvas
+              *ngIf="balanceTrendChartData.labels && balanceTrendChartData.labels.length > 0"
               baseChart
               type="line"
               [data]="balanceTrendChartData"
               [options]="balanceTrendChartOptions"
             ></canvas>
+            <div *ngIf="!balanceTrendChartData.labels || balanceTrendChartData.labels.length === 0"
+                 class="flex flex-col items-center justify-center h-full text-gray-400">
+              <span class="text-4xl mb-2">📈</span>
+              <p class="text-sm">Cargando datos...</p>
+            </div>
           </div>
-          <p class="text-xs text-gray-500 mt-4">Evolución del saldo disponible en los últimos 5 meses</p>
         </div>
 
         <!-- Expenses by Category Chart -->
         <div class="bg-white rounded-lg shadow-md p-6">
-          <h2 class="text-lg font-bold text-gray-900 mb-4">Gastos por Categoría</h2>
+          <h2 class="text-lg font-bold text-gray-900 mb-1">Gastos por Categoría</h2>
+          <p class="text-xs text-gray-400 mb-4">Distribución de gastos por categoría este mes</p>
           <div class="relative h-64 flex justify-center">
             <canvas
+              *ngIf="expenseByCategoryChartData.labels && expenseByCategoryChartData.labels.length > 0"
               baseChart
               type="doughnut"
               [data]="expenseByCategoryChartData"
               [options]="expenseByCategoryChartOptions"
               style="max-width: 300px"
             ></canvas>
+            <div *ngIf="!expenseByCategoryChartData.labels || expenseByCategoryChartData.labels.length === 0"
+                 class="flex flex-col items-center justify-center h-full text-gray-400">
+              <span class="text-4xl mb-2">🥧</span>
+              <p class="text-sm">Sin gastos registrados este mes</p>
+            </div>
           </div>
-          <p class="text-xs text-gray-500 mt-4">Distribución de gastos por categoría este mes</p>
         </div>
       </div>
 
       <!-- Income vs Expense Chart -->
       <div class="bg-white rounded-lg shadow-md p-6 mt-6">
-        <h2 class="text-lg font-bold text-gray-900 mb-4">Ingresos vs Gastos</h2>
+        <h2 class="text-lg font-bold text-gray-900 mb-1">Ingresos vs Gastos</h2>
+        <p class="text-xs text-gray-400 mb-4">Últimos 5 meses</p>
         <div class="relative h-80">
           <canvas
+            *ngIf="incomeVsExpenseChartData.labels && incomeVsExpenseChartData.labels.length > 0"
             baseChart
             type="bar"
             [data]="incomeVsExpenseChartData"
             [options]="incomeVsExpenseChartOptions"
           ></canvas>
+          <div *ngIf="!incomeVsExpenseChartData.labels || incomeVsExpenseChartData.labels.length === 0"
+               class="flex flex-col items-center justify-center h-full text-gray-400">
+            <span class="text-4xl mb-2">📊</span>
+            <p class="text-sm">Sin movimientos registrados aún</p>
+          </div>
         </div>
-        <p class="text-xs text-gray-500 mt-4">Comparación de ingresos y gastos mensuales</p>
       </div>
 
       <!-- Quick Actions -->

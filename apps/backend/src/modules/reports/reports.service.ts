@@ -67,13 +67,50 @@ export class ReportsService {
   async getNetWorthEvolution(userId: string) {
     const evolution = await this.closuresService.getEvolutionSummary(userId);
 
+    // Siempre añadir el estado actual como punto más reciente
+    const totalAssets = await this.accountsService.getTotalBalance(userId);
+    const totalCardDebt = await this.creditCardsService.getTotalBalance(userId);
+    const totalDebt = await this.debtsService.getTotalDebt(userId);
+    const totalFunds = await this.fundsService.getTotalSaved(userId);
+    const netWorth = totalAssets + totalFunds - totalCardDebt - totalDebt;
+
+    const now = new Date();
+    const monthNames = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    // No duplicar si ya existe cierre del mes actual
+    const alreadyClosed = evolution.some((e) => e.month === currentMonthKey);
+
+    const allPoints = evolution.map((e) => {
+      const [year, month] = e.month.split('-');
+      return {
+        label: `${monthNames[parseInt(month) - 1]} ${year.slice(2)}`,
+        totalAssetsCents: e.totalAssetsCents,
+        totalFundsCents: e.totalFundsCents,
+        totalCreditCardDebtCents: e.totalCreditCardDebtCents,
+        totalDebtCents: e.totalDebtCents,
+        netWorthCents: e.netWorthCents,
+      };
+    });
+
+    if (!alreadyClosed) {
+      allPoints.push({
+        label: `${monthNames[now.getMonth()]} ${String(now.getFullYear()).slice(2)} (hoy)`,
+        totalAssetsCents: totalAssets,
+        totalFundsCents: totalFunds,
+        totalCreditCardDebtCents: totalCardDebt,
+        totalDebtCents: totalDebt,
+        netWorthCents: netWorth,
+      });
+    }
+
     return {
-      labels: evolution.map((e) => e.month),
-      assets: evolution.map((e) => e.totalAssetsCents / 100),
-      funds: evolution.map((e) => e.totalFundsCents / 100),
-      cardDebt: evolution.map((e) => e.totalCreditCardDebtCents / 100),
-      debt: evolution.map((e) => e.totalDebtCents / 100),
-      netWorth: evolution.map((e) => e.netWorthCents / 100),
+      labels: allPoints.map((e) => e.label),
+      assets: allPoints.map((e) => e.totalAssetsCents / 100),
+      funds: allPoints.map((e) => e.totalFundsCents / 100),
+      cardDebt: allPoints.map((e) => e.totalCreditCardDebtCents / 100),
+      debt: allPoints.map((e) => e.totalDebtCents / 100),
+      netWorth: allPoints.map((e) => e.netWorthCents / 100),
     };
   }
 
