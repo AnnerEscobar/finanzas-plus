@@ -158,6 +158,16 @@ export class CreditCardsController {
   }
 
   /**
+   * POST /credit-cards/:id/cortes/repair-installments
+   * Corrige cuotas de extrafinanciamientos mal numeradas en el corte abierto.
+   */
+  @Post(':id/cortes/repair-installments')
+  @HttpCode(200)
+  async repairInstallments(@Param('id') id: string, @Req() req: any) {
+    return this.creditCardsService.repairOpenCorteInstallments(req.user.userId, id);
+  }
+
+  /**
    * POST /credit-cards/:id/cortes/:corteId/abonar
    * Registrar un abono parcial al corte (descuenta de cuenta, no genera movimientos de gasto)
    */

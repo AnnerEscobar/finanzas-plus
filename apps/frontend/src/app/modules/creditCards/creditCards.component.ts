@@ -524,6 +524,32 @@ export class CreditCardsComponent implements OnInit, OnDestroy {
       });
   }
 
+  repairInstallments() {
+    if (!this.selectedCard) return;
+    if (!confirm('¿Corregir las cuotas del corte abierto?\n\nEsto eliminará y re-aplicará los cargos de extrafinanciamientos con los números de cuota correctos.')) return;
+
+    this.loading = true;
+    this.creditCardsService
+      .repairInstallments(this.selectedCard._id)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (updatedCard) => {
+          this.selectedCard = updatedCard;
+          if (this.selectedCorte) {
+            this.selectedCorte =
+              updatedCard.statementCycles.find((c) => c._id === this.selectedCorte!._id) || null;
+          }
+          this.success = '✅ Cuotas corregidas correctamente.';
+          this.loading = false;
+          this.loadCards();
+        },
+        error: (err) => {
+          this.error = err.error?.message || 'Error al corregir cuotas';
+          this.loading = false;
+        },
+      });
+  }
+
   payCorte() {
     if (!this.selectedCard || !this.selectedCorte) return;
     if (!this.payCorteForm.valid) {

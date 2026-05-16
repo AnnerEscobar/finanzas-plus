@@ -141,6 +141,11 @@ export class CreditCardsService {
     return this.apiService.post<CreditCard>(`credit-cards/${cardId}/cortes/close`, {});
   }
 
+  /** Repara cuotas de extrafinanciamientos mal numeradas en el corte abierto */
+  repairInstallments(cardId: string): Observable<CreditCard> {
+    return this.apiService.post<CreditCard>(`credit-cards/${cardId}/cortes/repair-installments`, {});
+  }
+
   /** Pay a corte in full from an account (generates expense movements per category) */
   payCorte(cardId: string, corteId: string, accountId: string): Observable<CreditCard> {
     return this.apiService.post<CreditCard>(`credit-cards/${cardId}/cortes/${corteId}/pay`, { accountId });

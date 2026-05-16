@@ -129,11 +129,17 @@
               Corte día {{ selectedCard.cutoffDay }} · Vence día {{ selectedCard.paymentDueDay }}
             </p>
           </div>
-          <div class="flex gap-2">
+          <div class="flex gap-2 flex-wrap">
             <button *ngIf="getOpenCorte()"
                     (click)="closeCorte()"
                     class="px-3 py-1.5 text-sm border border-yellow-400 text-yellow-700 rounded-lg hover:bg-yellow-50 transition">
               Cerrar Corte
+            </button>
+            <button *ngIf="getOpenCorte()"
+                    (click)="repairInstallments()"
+                    title="Corrige los números de cuota del corte abierto si están mal"
+                    class="px-3 py-1.5 text-sm border border-gray-300 text-gray-500 rounded-lg hover:bg-gray-50 transition">
+              🔧 Corregir Cuotas
             </button>
             <button (click)="openExtraFinanciamientoDialog()"
                     class="px-3 py-1.5 text-sm border border-purple-400 text-purple-700 rounded-lg hover:bg-purple-50 transition">
