@@ -423,6 +423,12 @@ export class CreditCardsService {
     corte.charges.push(charge);
     ef.lastAppliedCorteId = corte._id;
     this.recalculateCorteTotals(corte);
+
+    // Si esta es la última cuota, marcar el EF como completado
+    // (ya no hay más cuotas que programar, aunque el corte aún no se haya pagado)
+    if (installmentNumber >= ef.totalInstallments) {
+      ef.status = 'completed';
+    }
   }
 
   /**
