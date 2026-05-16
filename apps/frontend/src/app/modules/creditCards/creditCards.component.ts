@@ -723,7 +723,19 @@ export class CreditCardsComponent implements OnInit, OnDestroy {
   }
 
   getActiveEFs(): ExtraFinanciamiento[] {
-    return this.selectedCard?.extraFinancings?.filter((e) => e.status === 'active') || [];
+    if (!this.selectedCard) return [];
+    return this.selectedCard.extraFinancings.filter((ef) => {
+      if (ef.status !== 'active') return false;
+      // Ocultar si la última cuota ya fue aplicada a algún corte (aunque no esté pagado)
+      const lastInstallmentApplied = this.selectedCard!.statementCycles.some((corte) =>
+        (corte as any).charges?.some(
+          (ch: any) =>
+            ch.extraFinancingId?.toString() === ef._id.toString() &&
+            ch.installmentNumber === ef.totalInstallments,
+        ),
+      );
+      return !lastInstallmentApplied;
+    });
   }
 
   getAllEFs(): ExtraFinanciamiento[] {
@@ -732,7 +744,14 @@ export class CreditCardsComponent implements OnInit, OnDestroy {
 
   getEFProgress(ef: ExtraFinanciamiento): number {
     if (ef.totalInstallments === 0) return 0;
-    return Math.round((ef.paidInstallments / ef.totalInstallments) * 100);
+    // Calcular cuotas aplicadas realmente (en cualquier corte)
+    const applied = this.selectedCard?.statementCycles.reduce((count, corte) => {
+      return count + ((corte as any).charges?.filter(
+        (ch: any) => ch.extraFinancingId?.toString() === ef._id.toString()
+      ).length ?? 0);
+    }, 0) ?? 0;
+    const effectivePaid = Math.max(ef.paidInstallments, applied - 1);
+    return Math.min(100, Math.round((effectivePaid / ef.totalInstallments) * 100));
   }
 
   getEFRemaining(ef: ExtraFinanciamiento): number {
