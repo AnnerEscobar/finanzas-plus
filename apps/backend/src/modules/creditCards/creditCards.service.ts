@@ -584,11 +584,22 @@ export class CreditCardsService {
     // Re-aplicar cada EF activo con el número correcto
     // (getLastAppliedInstallmentNumber ya no cuenta el corte abierto porque lo limpiamos)
     for (const ef of card.extraFinancings) {
-      if (ef.status === 'active' && ef.paidInstallments < ef.totalInstallments) {
-        const lastApplied = this.getLastAppliedInstallmentNumber(card, ef);
-        const nextInstallmentNumber = lastApplied + 1;
+      if (ef.status !== 'active') continue;
 
+      const lastApplied = this.getLastAppliedInstallmentNumber(card, ef);
+
+      // Si la última cuota ya está aplicada en un corte anterior (cerrado),
+      // marcar como completado sin agregar nueva cuota al corte abierto
+      if (lastApplied >= ef.totalInstallments) {
+        ef.status = 'completed';
+        continue;
+      }
+
+      // Si aún hay cuotas pendientes, aplicar la siguiente
+      if (ef.paidInstallments < ef.totalInstallments) {
+        const nextInstallmentNumber = lastApplied + 1;
         if (nextInstallmentNumber <= ef.totalInstallments) {
+          // applyExtraFinancingCuota marca como completed si es la última
           this.applyExtraFinancingCuota(card, openCorte, ef, nextInstallmentNumber);
         }
       }
