@@ -732,6 +732,7 @@ export class CreditCardsComponent implements OnInit, OnDestroy {
 
   getEFProgress(ef: ExtraFinanciamiento): number {
     if (ef.totalInstallments === 0) return 0;
+    if (ef.status === 'completed') return 100;
     return Math.round((ef.paidInstallments / ef.totalInstallments) * 100);
   }
 

@@ -207,10 +207,18 @@
 
             <!-- Progress bar -->
             <div class="mt-3">
+              <!-- Texto superior: diferente si está completado -->
               <div class="flex justify-between text-xs text-gray-600 mb-1">
-                <span>{{ ef.paidInstallments }} de {{ ef.totalInstallments }} cuotas pagadas</span>
-                <span>Faltan {{ getEFRemaining(ef) }} cuotas</span>
+                <ng-container *ngIf="ef.status === 'completed'; else activeProgress">
+                  <span class="font-medium">Cuota {{ ef.totalInstallments }}/{{ ef.totalInstallments }}</span>
+                  <span class="text-green-600 font-medium">✅ Completada</span>
+                </ng-container>
+                <ng-template #activeProgress>
+                  <span>{{ ef.paidInstallments }} de {{ ef.totalInstallments }} cuotas pagadas</span>
+                  <span>Faltan {{ getEFRemaining(ef) }} cuotas</span>
+                </ng-template>
               </div>
+              <!-- Barra de progreso -->
               <div class="w-full bg-gray-200 rounded-full h-2">
                 <div class="h-2 rounded-full transition-all"
                      [class.bg-purple-500]="ef.status === 'active'"
@@ -218,8 +226,9 @@
                      [style.width.%]="getEFProgress(ef)">
                 </div>
               </div>
-              <p class="text-xs text-gray-500 mt-1">
-                Saldo restante: {{ formatCurrency((ef.totalInstallments - ef.paidInstallments) * ef.monthlyAmountCents) }}
+              <!-- Texto inferior: solo muestra saldo si está activo -->
+              <p *ngIf="ef.status === 'active'" class="text-xs text-gray-500 mt-1">
+                Saldo restante: {{ formatCurrency(getEFRemaining(ef) * ef.monthlyAmountCents) }}
               </p>
             </div>
           </div>
