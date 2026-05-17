@@ -488,12 +488,20 @@ export class CreditCardsService {
 
     // Aplicar cuotas pendientes de extrafinanciamientos activos
     for (const ef of card.extraFinancings) {
-      if (ef.status === 'active' && ef.paidInstallments < ef.totalInstallments) {
-        // Calcular cuál cuota toca aplicar basándose en el último número aplicado
-        const lastApplied = this.getLastAppliedInstallmentNumber(card, ef);
-        const nextInstallmentNumber = lastApplied + 1;
+      if (ef.status !== 'active') continue;
 
+      const lastApplied = this.getLastAppliedInstallmentNumber(card, ef);
+
+      // Si la última cuota ya está aplicada en un corte anterior, marcar completado
+      if (lastApplied >= ef.totalInstallments) {
+        ef.status = 'completed';
+        continue;
+      }
+
+      if (ef.paidInstallments < ef.totalInstallments) {
+        const nextInstallmentNumber = lastApplied + 1;
         if (nextInstallmentNumber <= ef.totalInstallments) {
+          // applyExtraFinancingCuota marca como completed si es la última cuota
           this.applyExtraFinancingCuota(card, createdNewCorte, ef, nextInstallmentNumber);
         }
       }
