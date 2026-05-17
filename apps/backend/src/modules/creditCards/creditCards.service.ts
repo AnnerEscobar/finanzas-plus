@@ -486,25 +486,20 @@ export class CreditCardsService {
     card.statementCycles.push(newCorte as any);
     const createdNewCorte = card.statementCycles[card.statementCycles.length - 1];
 
-    // Aplicar cuotas pendientes de extrafinanciamientos activos
+    // Aplicar cuotas pendientes de extrafinanciamientos activos al nuevo corte
+    // getNextInstallmentForOpenCorte usa paidInstallments + cargos en cortes cerrados,
+    // sin depender del campo installmentNumber (que puede estar ausente en cargos viejos)
     for (const ef of card.extraFinancings) {
       if (ef.status !== 'active') continue;
 
-      const lastApplied = this.getLastAppliedInstallmentNumber(card, ef);
+      const nextInstallmentNumber = this.getNextInstallmentForOpenCorte(card, ef);
 
-      // Si la última cuota ya está aplicada en un corte anterior, marcar completado
-      if (lastApplied >= ef.totalInstallments) {
+      if (nextInstallmentNumber > ef.totalInstallments) {
         ef.status = 'completed';
         continue;
       }
 
-      if (ef.paidInstallments < ef.totalInstallments) {
-        const nextInstallmentNumber = lastApplied + 1;
-        if (nextInstallmentNumber <= ef.totalInstallments) {
-          // applyExtraFinancingCuota marca como completed si es la última cuota
-          this.applyExtraFinancingCuota(card, createdNewCorte, ef, nextInstallmentNumber);
-        }
-      }
+      this.applyExtraFinancingCuota(card, createdNewCorte, ef, nextInstallmentNumber);
     }
 
     this.recalculateCardTotals(card);
@@ -572,9 +567,30 @@ export class CreditCardsService {
   // ==========================================================================
 
   /**
-   * Elimina las cuotas de extrafinanciamientos mal numeradas del corte abierto
-   * y las vuelve a aplicar con el número correcto.
-   * Se usa una sola vez para corregir datos migrados con el bug de countAppliedInstallments.
+   * Fuente de verdad para calcular la siguiente cuota a aplicar en el corte abierto.
+   * Usa paidInstallments (cortes pagados) + cargos en cortes cerrados_sin_pagar.
+   * NO depende del campo installmentNumber, que puede estar ausente en cargos viejos.
+   */
+  private getNextInstallmentForOpenCorte(card: any, ef: any): number {
+    const efId = ef._id.toString();
+    const chargesInClosedUnpaid = card.statementCycles
+      .filter((c: any) => c.status === 'closed_unpaid')
+      .reduce(
+        (cnt: number, c: any) =>
+          cnt +
+          ((c.charges || []).filter((ch: any) => ch.extraFinancingId?.toString() === efId)
+            .length),
+        0,
+      );
+    return ef.paidInstallments + chargesInClosedUnpaid + 1;
+  }
+
+  /**
+   * Repara las cuotas del corte abierto.
+   * Lógica robusta: para cada EF activo:
+   *   1. Si la última cuota ya existe en CUALQUIER corte (incluido el abierto) → marcar completed.
+   *   2. Si no, calcula el número correcto con paidInstallments + cargos cerrados + 1
+   *      y aplica esa cuota al corte abierto.
    */
   async repairOpenCorteInstallments(userId: string, cardId: string) {
     const card = await this.findByIdAndUser(cardId, userId);
@@ -584,35 +600,44 @@ export class CreditCardsService {
       throw new BadRequestException('No hay corte abierto para reparar');
     }
 
-    // Quitar todas las cuotas de EF del corte abierto
-    (openCorte as any).charges = (openCorte as any).charges.filter(
-      (ch: any) => !ch.extraFinancingId,
-    );
-
-    // Re-aplicar cada EF activo con el número correcto
-    // (getLastAppliedInstallmentNumber ya no cuenta el corte abierto porque lo limpiamos)
     for (const ef of card.extraFinancings) {
       if (ef.status !== 'active') continue;
 
-      const lastApplied = this.getLastAppliedInstallmentNumber(card, ef);
+      const efId = ef._id.toString();
 
-      // Si la última cuota ya está aplicada en un corte anterior (cerrado),
-      // marcar como completado sin agregar nueva cuota al corte abierto
-      if (lastApplied >= ef.totalInstallments) {
+      // Verificar si la última cuota ya está en CUALQUIER corte (abierto o cerrado)
+      const lastInstallmentExists = card.statementCycles.some((corte: any) =>
+        (corte.charges || []).some(
+          (ch: any) =>
+            ch.extraFinancingId?.toString() === efId &&
+            (ch.installmentNumber ?? 0) >= ef.totalInstallments,
+        ),
+      );
+
+      if (lastInstallmentExists) {
+        // La última cuota ya está programada → solo marcar completado
         ef.status = 'completed';
         continue;
       }
 
-      // Si aún hay cuotas pendientes, aplicar la siguiente
-      if (ef.paidInstallments < ef.totalInstallments) {
-        const nextInstallmentNumber = lastApplied + 1;
-        if (nextInstallmentNumber <= ef.totalInstallments) {
-          // applyExtraFinancingCuota marca como completed si es la última
-          this.applyExtraFinancingCuota(card, openCorte, ef, nextInstallmentNumber);
-        }
+      // Calcular cuota correcta usando fuente de verdad (no installmentNumber)
+      const nextInstallmentNumber = this.getNextInstallmentForOpenCorte(card, ef);
+
+      if (nextInstallmentNumber > ef.totalInstallments) {
+        // Todas las cuotas ya están en cortes cerrados → completado sin cargo nuevo
+        ef.status = 'completed';
+        continue;
       }
+
+      // Reemplazar el cargo incorrecto en el corte abierto con el número correcto
+      (openCorte as any).charges = (openCorte as any).charges.filter(
+        (ch: any) => ch.extraFinancingId?.toString() !== efId,
+      );
+      this.applyExtraFinancingCuota(card, openCorte, ef, nextInstallmentNumber);
     }
 
+    card.markModified('extraFinancings');
+    card.markModified('statementCycles');
     this.recalculateCorteTotals(openCorte);
     this.recalculateCardTotals(card);
     return card.save();

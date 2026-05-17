@@ -252,50 +252,6 @@ export class CreditCardsComponent implements OnInit, OnDestroy {
     this.selectedCorte = null;
     this.error = null;
     this.success = null;
-    this.autoRepairIfNeeded(card);
-  }
-
-  /**
-   * Si el corte abierto tiene cuotas de EF con número incorrecto,
-   * lanza la reparación automáticamente (silenciosamente).
-   */
-  private autoRepairIfNeeded(card: CreditCard) {
-    const openCorte = card.statementCycles.find((c) => c.status === 'open');
-    if (!openCorte) return;
-
-    // Detectar cuota mal numerada: el número en el cargo no coincide
-    // con el que debería ser (lastApplied en todos los cortes + 1)
-    const charges = (openCorte as any).charges || [];
-    const efCharges = charges.filter((ch: any) => ch.extraFinancingId);
-    if (efCharges.length === 0) return;
-
-    // Para cada EF con cargo en el corte abierto, verificar el número de cuota
-    const needsRepair = efCharges.some((ch: any) => {
-      // Buscar cuántas cuotas de este EF existen en cortes CERRADOS
-      const closedMax = card.statementCycles
-        .filter((c) => c.status !== 'open')
-        .reduce((max: number, corte: any) => {
-          const found = (corte.charges || [])
-            .filter((c2: any) => c2.extraFinancingId?.toString() === ch.extraFinancingId?.toString())
-            .map((c2: any) => c2.installmentNumber ?? 0);
-          return Math.max(max, ...found, 0);
-        }, 0);
-      // La cuota del corte abierto debería ser closedMax + 1
-      return ch.installmentNumber !== closedMax + 1;
-    });
-
-    if (needsRepair) {
-      this.creditCardsService
-        .repairInstallments(card._id)
-        .pipe(takeUntil(this.destroy$))
-        .subscribe({
-          next: (updatedCard) => {
-            this.selectedCard = updatedCard;
-            this.success = '✅ Cuotas corregidas automáticamente.';
-          },
-          error: () => {}, // silencioso
-        });
-    }
   }
 
   selectCorte(corte: CreditCardCorte) {
