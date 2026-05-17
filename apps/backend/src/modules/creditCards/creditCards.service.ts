@@ -424,9 +424,10 @@ export class CreditCardsService {
     ef.lastAppliedCorteId = corte._id;
     this.recalculateCorteTotals(corte);
 
-    // Si esta es la última cuota, marcar el EF como completado
-    // (ya no hay más cuotas que programar, aunque el corte aún no se haya pagado)
-    if (installmentNumber >= ef.totalInstallments) {
+    // Si esta es la última cuota, marcar completado SOLO si no hay cuotas
+    // pendientes de pago en cortes closed_unpaid (evita marcar completado prematuramente
+    // cuando hay meses anteriores sin pagar con cuotas de este EF).
+    if (installmentNumber >= ef.totalInstallments && this.isEFCompleted(card, ef)) {
       ef.status = 'completed';
     }
   }
@@ -495,7 +496,9 @@ export class CreditCardsService {
       const nextInstallmentNumber = this.getNextInstallmentForOpenCorte(card, ef);
 
       if (nextInstallmentNumber > ef.totalInstallments) {
-        ef.status = 'completed';
+        // Todas las cuotas ya están en cortes; no agregar nueva.
+        // No marcar 'completed' aquí: puede haber cuotas pendientes de pago
+        // en cortes closed_unpaid. payCorte se encargará de marcar completado.
         continue;
       }
 
@@ -567,6 +570,35 @@ export class CreditCardsService {
   // ==========================================================================
 
   /**
+   * Determina si un EF debe marcarse como 'completed'.
+   * Regla: la última cuota (installmentNumber >= totalInstallments) está aplicada
+   * en algún corte, Y no hay ningún corte 'closed_unpaid' con cargos de este EF.
+   * Esto evita marcar completado cuando aún hay cuotas pendientes de pago en meses anteriores.
+   */
+  private isEFCompleted(card: any, ef: any): boolean {
+    const efId = ef._id.toString();
+
+    // Verificar si alguna cuota con número final está aplicada
+    const lastInstallmentApplied = card.statementCycles.some((c: any) =>
+      (c.charges || []).some(
+        (ch: any) =>
+          ch.extraFinancingId?.toString() === efId &&
+          (ch.installmentNumber ?? 0) >= ef.totalInstallments,
+      ),
+    );
+    if (!lastInstallmentApplied) return false;
+
+    // Verificar que no haya cuotas pendientes de pago en cortes cerrados
+    const hasPendingInClosedUnpaid = card.statementCycles
+      .filter((c: any) => c.status === 'closed_unpaid')
+      .some((c: any) =>
+        (c.charges || []).some((ch: any) => ch.extraFinancingId?.toString() === efId),
+      );
+
+    return !hasPendingInClosedUnpaid;
+  }
+
+  /**
    * Fuente de verdad para calcular la siguiente cuota a aplicar en el corte abierto.
    * Usa paidInstallments (cortes pagados) + cargos en cortes cerrados_sin_pagar.
    * NO depende del campo installmentNumber, que puede estar ausente en cargos viejos.
@@ -600,6 +632,25 @@ export class CreditCardsService {
       throw new BadRequestException('No hay corte abierto para reparar');
     }
 
+    // PASO 1: Corregir EFs marcados prematuramente como 'completed'.
+    // Un EF 'completed' con cuotas pendientes en cortes closed_unpaid debe volver a 'active'.
+    for (const ef of card.extraFinancings) {
+      if (ef.status !== 'completed') continue;
+      if (ef.paidInstallments >= ef.totalInstallments) continue; // Realmente pagado
+
+      const efId = ef._id.toString();
+      const hasPendingInClosedUnpaid = card.statementCycles
+        .filter((c: any) => c.status === 'closed_unpaid')
+        .some((c: any) =>
+          (c.charges || []).some((ch: any) => ch.extraFinancingId?.toString() === efId),
+        );
+
+      if (hasPendingInClosedUnpaid) {
+        ef.status = 'active'; // Reactivar: aún hay cuotas sin pagar en meses anteriores
+      }
+    }
+
+    // PASO 2: Reparar cuotas del corte abierto para cada EF activo
     for (const ef of card.extraFinancings) {
       if (ef.status !== 'active') continue;
 
@@ -615,8 +666,11 @@ export class CreditCardsService {
       );
 
       if (lastInstallmentExists) {
-        // La última cuota ya está programada → solo marcar completado
-        ef.status = 'completed';
+        // La última cuota ya está programada.
+        // Marcar completado solo si no hay cuotas pendientes en closed_unpaid.
+        if (this.isEFCompleted(card, ef)) {
+          ef.status = 'completed';
+        }
         continue;
       }
 
@@ -624,8 +678,8 @@ export class CreditCardsService {
       const nextInstallmentNumber = this.getNextInstallmentForOpenCorte(card, ef);
 
       if (nextInstallmentNumber > ef.totalInstallments) {
-        // Todas las cuotas ya están en cortes cerrados → completado sin cargo nuevo
-        ef.status = 'completed';
+        // Todas las cuotas ya están en cortes cerrados; no agregar nueva.
+        // No marcar completed: puede haber closed_unpaid pendientes.
         continue;
       }
 
@@ -802,6 +856,16 @@ export class CreditCardsService {
         if (ef.paidInstallments >= ef.totalInstallments) {
           ef.status = 'completed';
         }
+      }
+    }
+
+    // 6. Re-evaluar EFs activos: al pagar este corte puede que un EF ya no tenga
+    //    cuotas pendientes en cortes closed_unpaid → puede pasar a 'completed'.
+    //    (Ej: al pagar Corte #1, Cremallera queda con su última cuota solo en el abierto → completed)
+    for (const ef of card.extraFinancings) {
+      if (ef.status !== 'active') continue;
+      if (ef.paidInstallments >= ef.totalInstallments || this.isEFCompleted(card, ef)) {
+        ef.status = 'completed';
       }
     }
 

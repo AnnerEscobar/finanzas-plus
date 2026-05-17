@@ -730,10 +730,29 @@ export class CreditCardsComponent implements OnInit, OnDestroy {
     return this.selectedCard?.extraFinancings || [];
   }
 
+  /**
+   * Cuotas "facturadas": pagadas + las que están en cortes closed_unpaid (pendientes de pago).
+   * Para Cremallera: paidInstallments(8) + 1 cargo en Corte#1 closed_unpaid = 9.
+   * Esto refleja el avance real visible para el usuario (cuota a la que llegamos).
+   */
+  getEFBilledInstallments(ef: ExtraFinanciamiento): number {
+    if (!this.selectedCard) return ef.paidInstallments;
+    const efId = ef._id;
+    const closedUnpaidCount = this.selectedCard.statementCycles
+      .filter((c) => c.status === 'closed_unpaid')
+      .reduce(
+        (count, c) =>
+          count + c.charges.filter((ch) => ch.extraFinancingId === efId).length,
+        0,
+      );
+    return ef.paidInstallments + closedUnpaidCount;
+  }
+
   getEFProgress(ef: ExtraFinanciamiento): number {
     if (ef.totalInstallments === 0) return 0;
     if (ef.status === 'completed') return 100;
-    return Math.round((ef.paidInstallments / ef.totalInstallments) * 100);
+    const billed = this.getEFBilledInstallments(ef);
+    return Math.round((billed / ef.totalInstallments) * 100);
   }
 
   getEFRemaining(ef: ExtraFinanciamiento): number {
