@@ -9,6 +9,7 @@ import {
   UseGuards,
   Req,
   HttpCode,
+  Query,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { DebtsService } from './debts.service';
@@ -33,8 +34,8 @@ export class DebtsController {
    * List all debts for the user with summary
    */
   @Get()
-  async findByUser(@Req() req: any) {
-    const debts = await this.debtsService.findByUserId(req.user.userId);
+  async findByUser(@Req() req: any, @Query('status') status?: 'active' | 'paid' | 'all') {
+    const debts = await this.debtsService.findByUserId(req.user.userId, status || 'active');
     const summary = await this.debtsService.getSummary(req.user.userId);
 
     return {

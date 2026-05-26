@@ -59,7 +59,14 @@
       "Bash(npx tsc *)",
       "Bash(grep -v \"^$\")",
       "Bash(gh --version)",
-      "mcp__Claude_in_Chrome__tabs_context_mcp"
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "Bash(git commit -m 'feat: add Express static server for Railway frontend deployment *)",
+      "Bash(git push *)",
+      "Bash(git commit *)",
+      "Bash(git rm *)",
+      "Bash(node --max-old-space-size=4096 node_modules/@angular/cli/bin/ng.js build --configuration development)",
+      "Bash(npx ng *)",
+      "Bash(python3 -c ' *)"
     ]
   }
 }

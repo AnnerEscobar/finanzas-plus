@@ -288,6 +288,16 @@
           </div>
         </div>
 
+        <div *ngIf="hasInitialFundAmount()">
+          <label class="block text-sm font-medium mb-1">Cuenta origen del saldo inicial *</label>
+          <select formControlName="sourceAccountId" class="w-full px-3 py-2 border rounded">
+            <option value="">Selecciona una cuenta</option>
+            <option *ngFor="let account of accounts" [value]="account._id">
+              {{ account.alias }}
+            </option>
+          </select>
+        </div>
+
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="block text-sm font-medium mb-1">Aporte Mensual (Q)</label>
@@ -417,9 +427,9 @@
         </div>
 
         <div>
-          <label class="block text-sm font-medium mb-1">Cuenta de Origen</label>
+          <label class="block text-sm font-medium mb-1">Cuenta de Origen *</label>
           <select formControlName="accountId" class="w-full px-3 py-2 border rounded">
-            <option value="">Sin especificar</option>
+            <option value="">Selecciona una cuenta</option>
             <option *ngFor="let account of accounts" [value]="account._id">
               {{ account.alias }}
             </option>

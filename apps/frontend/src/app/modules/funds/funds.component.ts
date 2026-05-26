@@ -62,6 +62,7 @@ export class FundsComponent implements OnInit, OnDestroy {
       fundType: ['retirement', Validators.required],
       targetAmountCents: [0, [Validators.min(0)]],
       currentAmountCents: [0, [Validators.min(0)]],
+      sourceAccountId: [''],
       monthlyContributionCents: [0, [Validators.min(0)]],
       annualInterestRate: [0, [Validators.min(0)]],
       startDate: [new Date().toISOString().split('T')[0]],
@@ -84,7 +85,7 @@ export class FundsComponent implements OnInit, OnDestroy {
     this.contributionForm = this.fb.group({
       amountCents: ['', [Validators.required, Validators.min(0.01)]],
       date: [new Date().toISOString().split('T')[0]],
-      accountId: [''],
+      accountId: ['', Validators.required],
       note: [''],
     });
   }
@@ -156,6 +157,7 @@ export class FundsComponent implements OnInit, OnDestroy {
       fundType: 'retirement',
       targetAmountCents: 0,
       currentAmountCents: 0,
+      sourceAccountId: this.accounts.length === 1 ? this.accounts[0]._id : '',
       monthlyContributionCents: 0,
       annualInterestRate: 0,
       startDate: new Date().toISOString().split('T')[0],
@@ -292,7 +294,7 @@ export class FundsComponent implements OnInit, OnDestroy {
     this.contributionForm.reset({
       amountCents: defaultAmount,
       date: new Date().toISOString().split('T')[0],
-      accountId: '',
+      accountId: this.accounts.length === 1 ? this.accounts[0]._id : '',
     });
     this.showAddContributionDialog = true;
     this.error = null;
@@ -370,5 +372,9 @@ export class FundsComponent implements OnInit, OnDestroy {
 
   calculateProgress(fund: Fund): number {
     return this.fundsService.calculateProgress(fund);
+  }
+
+  hasInitialFundAmount(): boolean {
+    return Number(this.fundForm.value.currentAmountCents || 0) > 0;
   }
 }

@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
+import { getEnv } from './config/env';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -9,7 +10,7 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
 
   // CORS — en producción usa la variable CORS_ORIGIN (puede ser lista separada por comas)
-  const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:4200';
+  const corsOrigin = getEnv('CORS_ORIGIN', 'http://localhost:4200');
   app.enableCors({
     origin: corsOrigin.split(',').map((s) => s.trim()),
     credentials: true,

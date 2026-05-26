@@ -1,12 +1,17 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
+import { ClientSession, Connection, Model, Types } from 'mongoose';
 import { Debt, DebtPayment } from './schemas/debt.schema';
+import { AccountsService } from '../accounts/accounts.service';
+import { MovementsService } from '../movements/movements.service';
 
 @Injectable()
 export class DebtsService {
   constructor(
     @InjectModel(Debt.name) private debtModel: Model<Debt>,
+    private accountsService: AccountsService,
+    private movementsService: MovementsService,
+    @InjectConnection() private connection: Connection,
   ) {}
 
   /**
@@ -75,8 +80,15 @@ export class DebtsService {
   /**
    * Find all active debts for a user
    */
-  async findByUserId(userId: string) {
-    return this.debtModel.find({ userId, isActive: true }).sort({ createdAt: -1 });
+  async findByUserId(userId: string, status: 'active' | 'paid' | 'all' = 'active') {
+    const query: any = { userId, isActive: true };
+    if (status === 'paid') {
+      query.status = 'paid';
+    } else if (status === 'active') {
+      query.status = { $ne: 'paid' };
+    }
+
+    return this.debtModel.find(query).sort({ createdAt: -1 });
   }
 
   /**
@@ -89,8 +101,8 @@ export class DebtsService {
   /**
    * Find debt by ID with user validation
    */
-  async findByIdAndUser(id: string, userId: string) {
-    const debt = await this.debtModel.findOne({ _id: id, userId });
+  async findByIdAndUser(id: string, userId: string, session?: ClientSession) {
+    const debt = await this.debtModel.findOne({ _id: id, userId }).session(session || null);
     if (!debt) {
       throw new NotFoundException('Deuda no encontrada');
     }
@@ -108,6 +120,10 @@ export class DebtsService {
     delete updateData.payments;
     delete updateData._id;
 
+    if (updateData.remainingCents !== undefined && updateData.remainingCents !== null) {
+      updateData.status = updateData.remainingCents === 0 ? 'paid' : 'active';
+    }
+
     const debt = await this.debtModel.findByIdAndUpdate(id, updateData, { new: true });
     if (!debt) {
       throw new NotFoundException('Deuda no encontrada');
@@ -119,7 +135,12 @@ export class DebtsService {
    * Soft delete debt (mark as inactive)
    */
   async deleteDebt(id: string, userId: string) {
-    await this.findByIdAndUser(id, userId);
+    const existing = await this.findByIdAndUser(id, userId);
+    if (existing.remainingCents > 0) {
+      throw new BadRequestException(
+        'No se puede eliminar una deuda con saldo pendiente. Primero paga o ajusta el saldo a Q0.00.',
+      );
+    }
 
     const debt = await this.debtModel.findByIdAndUpdate(
       id,
@@ -136,6 +157,74 @@ export class DebtsService {
    * Record a payment against a debt
    */
   async recordPayment(id: string, userId: string, data: any) {
+    return this.connection.transaction(async (session) => {
+      const debt = await this.findByIdAndUser(id, userId, session);
+
+      if (debt.status !== 'active') {
+        throw new BadRequestException('Solo se pueden registrar pagos en deudas activas');
+      }
+      if (!data.amountCents || data.amountCents <= 0) {
+        throw new BadRequestException('El monto del pago debe ser mayor a 0');
+      }
+      if (!data.accountId) {
+        throw new BadRequestException('La cuenta de pago es requerida');
+      }
+
+      const principalCents = data.principalCents || 0;
+      const interestCents = data.interestCents || 0;
+      if (principalCents > 0 || interestCents > 0) {
+        if (principalCents + interestCents !== data.amountCents) {
+          throw new BadRequestException('La suma de capital + interes debe ser igual al monto del pago');
+        }
+        if (principalCents > debt.remainingCents) {
+          throw new BadRequestException(
+            `El capital pagado (Q${(principalCents / 100).toFixed(2)}) excede el saldo restante (Q${(debt.remainingCents / 100).toFixed(2)})`,
+          );
+        }
+      } else if (data.amountCents > debt.remainingCents) {
+        throw new BadRequestException(
+          `El pago (Q${(data.amountCents / 100).toFixed(2)}) excede el saldo restante (Q${(debt.remainingCents / 100).toFixed(2)})`,
+        );
+      }
+
+      await this.accountsService.findByIdAndUser(data.accountId, userId, session);
+      await this.accountsService.decreaseBalance(data.accountId, data.amountCents, session);
+
+      const paymentId = new Types.ObjectId();
+      const payment: any = {
+        _id: paymentId,
+        amountCents: data.amountCents,
+        date: data.date ? new Date(data.date) : new Date(),
+        accountId: data.accountId,
+        principalCents,
+        interestCents,
+        note: data.note || '',
+        createdAt: new Date(),
+      };
+
+      debt.payments.push(payment);
+      const reductionCents = principalCents > 0 ? principalCents : data.amountCents;
+      debt.remainingCents = Math.max(0, debt.remainingCents - reductionCents);
+      debt.paidInstallments = (debt.paidInstallments || 0) + 1;
+      if (debt.remainingCents === 0) {
+        debt.status = 'paid';
+      }
+
+      await this.movementsService.createMovementRecord(userId, {
+        type: 'expense',
+        amountCents: data.amountCents,
+        date: payment.date,
+        accountId: data.accountId,
+        categoryId: data.categoryId,
+        defaultCategoryName: 'Deudas',
+        paymentMethod: 'debit',
+        note: data.note || `Pago deuda ${debt.alias}`,
+        relatedEntityId: paymentId.toString(),
+      }, session);
+
+      return debt.save({ session });
+    });
+
     const debt = await this.findByIdAndUser(id, userId);
 
     if (debt.status !== 'active') {
@@ -145,11 +234,8 @@ export class DebtsService {
     if (!data.amountCents || data.amountCents <= 0) {
       throw new BadRequestException('El monto del pago debe ser mayor a 0');
     }
-
-    if (data.amountCents > debt.remainingCents) {
-      throw new BadRequestException(
-        `El pago (Q${(data.amountCents / 100).toFixed(2)}) excede el saldo restante (Q${(debt.remainingCents / 100).toFixed(2)})`,
-      );
+    if (!data.accountId) {
+      throw new BadRequestException('La cuenta de pago es requerida');
     }
 
     // Validar desglose capital/interés si fue proporcionado
@@ -161,7 +247,19 @@ export class DebtsService {
           'La suma de capital + interés debe ser igual al monto del pago',
         );
       }
+      if (principalCents > debt.remainingCents) {
+        throw new BadRequestException(
+          `El capital pagado (Q${(principalCents / 100).toFixed(2)}) excede el saldo restante (Q${(debt.remainingCents / 100).toFixed(2)})`,
+        );
+      }
+    } else if (data.amountCents > debt.remainingCents) {
+      throw new BadRequestException(
+        `El pago (Q${(data.amountCents / 100).toFixed(2)}) excede el saldo restante (Q${(debt.remainingCents / 100).toFixed(2)})`,
+      );
     }
+
+    await this.accountsService.findByIdAndUser(data.accountId, userId);
+    await this.accountsService.decreaseBalance(data.accountId, data.amountCents);
 
     const payment: any = {
       amountCents: data.amountCents,
@@ -202,21 +300,56 @@ export class DebtsService {
    * Delete a payment from a debt
    */
   async deletePayment(id: string, userId: string, paymentId: string) {
+    return this.connection.transaction(async (session) => {
+      const debt = await this.findByIdAndUser(id, userId, session);
+
+      const payment = debt.payments.find((p) => p._id.toString() === paymentId);
+      if (!payment) {
+        throw new NotFoundException('Pago no encontrado');
+      }
+
+      const reductionCents =
+        payment.principalCents && payment.principalCents > 0
+          ? payment.principalCents
+          : payment.amountCents;
+      debt.remainingCents = Math.min(
+        debt.originalAmountCents,
+        debt.remainingCents + reductionCents,
+      );
+      debt.paidInstallments = Math.max(0, (debt.paidInstallments || 0) - 1);
+      if (debt.status === 'paid' && debt.remainingCents > 0) {
+        debt.status = 'active';
+      }
+
+      if (payment.accountId) {
+        await this.accountsService.increaseBalance(
+          payment.accountId.toString(),
+          payment.amountCents,
+          session,
+        );
+      }
+
+      await this.movementsService.deleteMovementRecordsByRelatedEntity(userId, paymentId, session);
+      debt.payments = debt.payments.filter((p) => p._id.toString() !== paymentId);
+
+      return debt.save({ session });
+    });
+
     const debt = await this.findByIdAndUser(id, userId);
 
-    const payment = debt.payments.find((p) => p._id.toString() === paymentId);
+    const payment = debt.payments.find((p) => p._id.toString() === paymentId)!;
     if (!payment) {
       throw new NotFoundException('Pago no encontrado');
     }
 
     // Restaurar saldo
     const reductionCents =
-      payment.principalCents && payment.principalCents > 0
-        ? payment.principalCents
+      (payment.principalCents || 0) > 0
+        ? (payment.principalCents || 0)
         : payment.amountCents;
     debt.remainingCents = Math.min(
       debt.originalAmountCents,
-      debt.remainingCents + reductionCents,
+      debt.remainingCents + (reductionCents || 0),
     );
 
     // Decrementar cuotas pagadas
@@ -225,6 +358,10 @@ export class DebtsService {
     // Re-activar si estaba pagada
     if (debt.status === 'paid' && debt.remainingCents > 0) {
       debt.status = 'active';
+    }
+
+    if (payment.accountId) {
+      await this.accountsService.increaseBalance(payment.accountId!.toString(), payment.amountCents);
     }
 
     debt.payments = debt.payments.filter((p) => p._id.toString() !== paymentId);

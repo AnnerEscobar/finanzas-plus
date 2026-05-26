@@ -662,7 +662,7 @@ export class CreditCardsComponent implements OnInit, OnDestroy {
               updatedCard.statementCycles.find((c) => c._id === this.selectedCorte!._id) || null;
           }
           this.closeExtraFinanciamientoDialog();
-          this.success = 'Extrafinanciamiento creado. La primera cuota se aplicó al corte abierto.';
+          this.success = 'Extrafinanciamiento creado. La próxima cuota se cargará al abrir el siguiente corte.';
           this.loadCards();
         },
         error: (err) => {

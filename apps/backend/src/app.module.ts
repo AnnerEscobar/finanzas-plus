@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule } from './config/config.module';
+import { getEnv } from './config/env';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { AccountsModule } from './modules/accounts/accounts.module';
@@ -14,7 +15,7 @@ import { ClosuresModule } from './modules/closures/closures.module';
 @Module({
   imports: [
     ConfigModule.forRoot(),
-    MongooseModule.forRoot(process.env.MONGODB_URI || 'mongodb://localhost:27017/finanzas-plus'),
+    MongooseModule.forRoot(getEnv('MONGODB_URI', 'mongodb://localhost:27017/finanzas-plus')),
     AuthModule,
     UsersModule,
     AccountsModule,

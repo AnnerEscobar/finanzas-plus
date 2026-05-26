@@ -20,6 +20,7 @@ export class DebtsComponent implements OnInit, OnDestroy {
   selectedDebt: Debt | null = null;
   summary: DebtSummary | null = null;
   accounts: any[] = [];
+  debtStatusFilter: 'active' | 'paid' = 'active';
 
   // Loading/Error
   loading = false;
@@ -90,7 +91,7 @@ export class DebtsComponent implements OnInit, OnDestroy {
     this.paymentForm = this.fb.group({
       amountCents: ['', [Validators.required, Validators.min(0.01)]],
       date: [new Date().toISOString().split('T')[0]],
-      accountId: [''],
+      accountId: ['', Validators.required],
       principalCents: [0],
       interestCents: [0],
       note: [''],
@@ -105,7 +106,7 @@ export class DebtsComponent implements OnInit, OnDestroy {
     this.error = null;
 
     this.debtsService
-      .getDebts()
+      .getDebts(this.debtStatusFilter)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (response) => {
@@ -137,6 +138,13 @@ export class DebtsComponent implements OnInit, OnDestroy {
           // Silent fail
         },
       });
+  }
+
+  setDebtStatusFilter(status: 'active' | 'paid') {
+    if (this.debtStatusFilter === status) return;
+    this.debtStatusFilter = status;
+    this.selectedDebt = null;
+    this.loadDebts();
   }
 
   /**
@@ -305,7 +313,7 @@ export class DebtsComponent implements OnInit, OnDestroy {
     this.paymentForm.reset({
       amountCents: defaultAmount,
       date: new Date().toISOString().split('T')[0],
-      accountId: '',
+      accountId: this.accounts.length === 1 ? this.accounts[0]._id : '',
       principalCents: 0,
       interestCents: 0,
     });

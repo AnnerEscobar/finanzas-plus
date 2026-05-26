@@ -505,7 +505,7 @@
   <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md max-h-screen overflow-y-auto">
     <h3 class="text-xl font-bold text-gray-900 mb-1">Registrar Compra a Cuotas</h3>
     <p class="text-sm text-gray-500 mb-5">
-      Si ya llevas cuotas pagadas, indícalo abajo. La próxima cuota pendiente se aplicará al corte abierto.
+      Si ya llevas cuotas pagadas, indícalo abajo. La próxima cuota pendiente se cargará al abrir el siguiente corte.
     </p>
     <form [formGroup]="efForm" (ngSubmit)="createExtraFinanciamiento()" class="space-y-3">
 
@@ -557,7 +557,7 @@
         </div>
         <div class="pt-1 border-t border-purple-200">
           <p class="text-xs text-purple-700 font-medium">
-            → Se aplicará la <strong>Cuota #{{ efNextInstallmentNumber }}</strong> al corte abierto actual
+            → Se cargará la <strong>Cuota #{{ efNextInstallmentNumber }}</strong> al abrir el siguiente corte
           </p>
         </div>
       </div>

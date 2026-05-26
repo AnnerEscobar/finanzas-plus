@@ -19,6 +19,7 @@ export class CategoriesService {
     { name: 'Entretenimiento', type: 'expense' },
     { name: 'Familia', type: 'expense' },
     { name: 'Emergencias', type: 'expense' },
+    { name: 'Fondos', type: 'expense' },
     { name: 'Salario', type: 'income' },
     { name: 'Otros Ingresos', type: 'income' },
   ];

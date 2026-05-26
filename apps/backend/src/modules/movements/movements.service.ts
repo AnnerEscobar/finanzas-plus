@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
+import { ClientSession, Connection, Model, Types } from 'mongoose';
 import { Movement } from './schemas/movement.schema';
 import { Category } from './schemas/category.schema';
 import { AccountsService } from '../accounts/accounts.service';
@@ -11,12 +11,39 @@ export class MovementsService {
     @InjectModel(Movement.name) private movementModel: Model<Movement>,
     @InjectModel(Category.name) private categoryModel: Model<Category>,
     private accountsService: AccountsService,
+    @InjectConnection() private connection: Connection,
   ) {}
 
   /**
    * RB-05: Registrar ingreso
    */
   async createIncome(userId: string, data: any) {
+    return this.connection.transaction(async (session) => {
+      const { amountCents, date, accountId, categoryId, note } = data;
+      if (!amountCents || amountCents <= 0) {
+        throw new BadRequestException('El monto debe ser mayor a 0');
+      }
+      if (!accountId) {
+        throw new BadRequestException('La cuenta destino es requerida');
+      }
+      await this.accountsService.findByIdAndUser(accountId, userId, session);
+      await this.accountsService.increaseBalance(accountId, amountCents, session);
+
+      const movement = new this.movementModel({
+        userId,
+        type: 'income',
+        amountCents,
+        date: date ? new Date(date) : new Date(),
+        accountId,
+        categoryId: categoryId || undefined,
+        paymentMethod: 'transfer',
+        note: note || '',
+        status: 'completed',
+      });
+
+      return movement.save({ session });
+    });
+
     const { amountCents, date, accountId, categoryId, note } = data;
 
     if (!amountCents || amountCents <= 0) {
@@ -51,6 +78,35 @@ export class MovementsService {
    * RB-06: Registrar gasto con efectivo/débito
    */
   async createExpense(userId: string, data: any) {
+    return this.connection.transaction(async (session) => {
+      const { amountCents, date, accountId, categoryId, paymentMethod, note } = data;
+      if (!amountCents || amountCents <= 0) {
+        throw new BadRequestException('El monto debe ser mayor a 0');
+      }
+      if (!accountId) {
+        throw new BadRequestException('La cuenta es requerida');
+      }
+      if (!['cash', 'debit'].includes(paymentMethod)) {
+        throw new BadRequestException('paymentMethod debe ser cash o debit');
+      }
+      await this.accountsService.findByIdAndUser(accountId, userId, session);
+      await this.accountsService.decreaseBalance(accountId, amountCents, session);
+
+      const movement = new this.movementModel({
+        userId,
+        type: 'expense',
+        amountCents,
+        date: date ? new Date(date) : new Date(),
+        accountId,
+        categoryId: categoryId || undefined,
+        paymentMethod,
+        note: note || '',
+        status: 'completed',
+      });
+
+      return movement.save({ session });
+    });
+
     const { amountCents, date, accountId, categoryId, paymentMethod, note } = data;
 
     if (!amountCents || amountCents <= 0) {
@@ -87,6 +143,56 @@ export class MovementsService {
    * RB-08: Transferencia entre cuentas propias
    */
   async createTransfer(userId: string, data: any) {
+    return this.connection.transaction(async (session) => {
+      const { amountCents, date, sourceAccountId, targetAccountId, note } = data;
+      if (!amountCents || amountCents <= 0) {
+        throw new BadRequestException('El monto debe ser mayor a 0');
+      }
+      if (!sourceAccountId || !targetAccountId) {
+        throw new BadRequestException('Cuentas origen y destino son requeridas');
+      }
+      if (sourceAccountId === targetAccountId) {
+        throw new BadRequestException('No puede transferir a la misma cuenta');
+      }
+
+      await this.accountsService.findByIdAndUser(sourceAccountId, userId, session);
+      await this.accountsService.findByIdAndUser(targetAccountId, userId, session);
+      await this.accountsService.decreaseBalance(sourceAccountId, amountCents, session);
+      await this.accountsService.increaseBalance(targetAccountId, amountCents, session);
+
+      const movementDate = date ? new Date(date) : new Date();
+      const noteText = note || '';
+      const transferOut = new this.movementModel({
+        userId,
+        type: 'transfer',
+        amountCents,
+        date: movementDate,
+        accountId: sourceAccountId,
+        paymentMethod: 'transfer',
+        note: `Transferencia salida: ${noteText}`,
+        status: 'completed',
+      });
+      const transferOutSaved = await transferOut.save({ session });
+
+      const transferIn = new this.movementModel({
+        userId,
+        type: 'transfer',
+        amountCents,
+        date: movementDate,
+        accountId: targetAccountId,
+        paymentMethod: 'transfer',
+        note: `Transferencia entrada: ${noteText}`,
+        status: 'completed',
+        relatedEntityId: transferOutSaved._id,
+      });
+      await transferIn.save({ session });
+
+      transferOutSaved.relatedEntityId = transferIn._id as Types.ObjectId;
+      await transferOutSaved.save({ session });
+
+      return { transferOut: transferOutSaved, transferIn };
+    });
+
     const { amountCents, date, sourceAccountId, targetAccountId, note } = data;
 
     if (!amountCents || amountCents <= 0) {
@@ -157,24 +263,67 @@ export class MovementsService {
       date: Date;
       accountId: string;
       categoryId?: string;
+      defaultCategoryName?: string;
       paymentMethod?: string;
       note?: string;
       relatedEntityId?: string;
     },
+    session?: ClientSession,
   ) {
+    const categoryId =
+      data.categoryId ||
+      (data.defaultCategoryName
+        ? (await this.ensureExpenseCategory(userId, data.defaultCategoryName, session))._id.toString()
+        : undefined);
+
     const movement = new this.movementModel({
       userId,
       type: data.type,
       amountCents: data.amountCents,
       date: data.date,
       accountId: data.accountId,
-      categoryId: data.categoryId || undefined,
+      categoryId,
       paymentMethod: data.paymentMethod || 'debit',
       note: data.note || '',
       status: 'completed',
       relatedEntityId: data.relatedEntityId || undefined,
     });
-    return movement.save();
+    return movement.save({ session });
+  }
+
+  async ensureExpenseCategory(userId: string, name: string, session?: ClientSession) {
+    const normalizedName = name.trim();
+    let category = await this.categoryModel
+      .findOne({ userId, name: normalizedName, type: 'expense' })
+      .session(session || null);
+
+    if (category) {
+      if (!category.isActive) {
+        category.isActive = true;
+        await category.save({ session });
+      }
+      return category;
+    }
+
+    category = new this.categoryModel({
+      userId,
+      name: normalizedName,
+      type: 'expense',
+      isDefault: true,
+      isActive: true,
+    });
+    return category.save({ session });
+  }
+
+  async deleteMovementRecordsByRelatedEntity(
+    userId: string,
+    relatedEntityId: string,
+    session?: ClientSession,
+  ) {
+    return this.movementModel.deleteMany({
+      userId,
+      relatedEntityId: new Types.ObjectId(relatedEntityId),
+    }).session(session || null);
   }
 
   /**

@@ -1,18 +1,77 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
+import { ClientSession, Connection, Model, Types } from 'mongoose';
 import { Fund, FundContribution } from './schemas/fund.schema';
+import { AccountsService } from '../accounts/accounts.service';
+import { MovementsService } from '../movements/movements.service';
 
 @Injectable()
 export class FundsService {
   constructor(
     @InjectModel(Fund.name) private fundModel: Model<Fund>,
+    private accountsService: AccountsService,
+    private movementsService: MovementsService,
+    @InjectConnection() private connection: Connection,
   ) {}
 
   /**
    * Create a new fund
    */
   async createFund(userId: string, data: any) {
+    return this.connection.transaction(async (session) => {
+      if (!data.alias) {
+        throw new BadRequestException('El alias es requerido');
+      }
+
+      const initialAmountCents = data.currentAmountCents || 0;
+      const sourceAccountId = data.sourceAccountId || data.accountId;
+      if (initialAmountCents > 0) {
+        if (!sourceAccountId) {
+          throw new BadRequestException('La cuenta origen es requerida para crear un fondo con saldo inicial');
+        }
+        await this.accountsService.findByIdAndUser(sourceAccountId, userId, session);
+        await this.accountsService.decreaseBalance(sourceAccountId, initialAmountCents, session);
+      }
+
+      const fund = new this.fundModel({
+        userId,
+        alias: data.alias,
+        description: data.description || '',
+        institution: data.institution || '',
+        fundType: data.fundType || 'retirement',
+        targetAmountCents: data.targetAmountCents || 0,
+        currentAmountCents: initialAmountCents,
+        monthlyContributionCents: data.monthlyContributionCents || 0,
+        annualInterestRate: data.annualInterestRate || 0,
+        startDate: data.startDate ? new Date(data.startDate) : new Date(),
+        targetDate: data.targetDate ? new Date(data.targetDate) : undefined,
+        contributions: [],
+        status: 'active',
+        note: data.note || '',
+        isActive: true,
+      });
+
+      if (fund.targetAmountCents > 0 && fund.currentAmountCents >= fund.targetAmountCents) {
+        fund.status = 'matured';
+      }
+
+      if (initialAmountCents > 0) {
+        await this.movementsService.createMovementRecord(userId, {
+          type: 'expense',
+          amountCents: initialAmountCents,
+          date: fund.startDate,
+          accountId: sourceAccountId,
+          categoryId: data.categoryId,
+          defaultCategoryName: 'Fondos',
+          paymentMethod: 'debit',
+          note: data.note || `Apertura fondo ${fund.alias}`,
+          relatedEntityId: (fund._id as Types.ObjectId).toString(),
+        }, session);
+      }
+
+      return fund.save({ session });
+    });
+
     if (!data.alias) {
       throw new BadRequestException('El alias es requerido');
     }
@@ -55,8 +114,8 @@ export class FundsService {
   /**
    * Find fund by ID with user validation
    */
-  async findByIdAndUser(id: string, userId: string) {
-    const fund = await this.fundModel.findOne({ _id: id, userId });
+  async findByIdAndUser(id: string, userId: string, session?: ClientSession) {
+    const fund = await this.fundModel.findOne({ _id: id, userId }).session(session || null);
     if (!fund) {
       throw new NotFoundException('Fondo no encontrado');
     }
@@ -85,7 +144,12 @@ export class FundsService {
    * Soft delete fund
    */
   async deleteFund(id: string, userId: string) {
-    await this.findByIdAndUser(id, userId);
+    const existing = await this.findByIdAndUser(id, userId);
+    if (existing.currentAmountCents > 0) {
+      throw new BadRequestException(
+        'No se puede eliminar un fondo con saldo. Primero transfiere o retira el saldo acumulado.',
+      );
+    }
 
     const fund = await this.fundModel.findByIdAndUpdate(
       id,
@@ -102,6 +166,54 @@ export class FundsService {
    * Add a contribution to a fund
    */
   async addContribution(id: string, userId: string, data: any) {
+    return this.connection.transaction(async (session) => {
+      const fund = await this.findByIdAndUser(id, userId, session);
+
+      if (fund.status !== 'active') {
+        throw new BadRequestException('Solo se pueden agregar aportes a fondos activos');
+      }
+      if (!data.amountCents || data.amountCents <= 0) {
+        throw new BadRequestException('El monto del aporte debe ser mayor a 0');
+      }
+      if (!data.accountId) {
+        throw new BadRequestException('La cuenta origen del aporte es requerida');
+      }
+
+      await this.accountsService.findByIdAndUser(data.accountId, userId, session);
+      await this.accountsService.decreaseBalance(data.accountId, data.amountCents, session);
+
+      const contributionId = new Types.ObjectId();
+      const contribution: any = {
+        _id: contributionId,
+        amountCents: data.amountCents,
+        date: data.date ? new Date(data.date) : new Date(),
+        accountId: data.accountId,
+        note: data.note || '',
+        createdAt: new Date(),
+      };
+
+      fund.contributions.push(contribution);
+      fund.currentAmountCents += contribution.amountCents;
+
+      if (fund.targetAmountCents > 0 && fund.currentAmountCents >= fund.targetAmountCents) {
+        fund.status = 'matured';
+      }
+
+      await this.movementsService.createMovementRecord(userId, {
+        type: 'expense',
+        amountCents: data.amountCents,
+        date: contribution.date,
+        accountId: data.accountId,
+        categoryId: data.categoryId,
+        defaultCategoryName: 'Fondos',
+        paymentMethod: 'debit',
+        note: data.note || `Aporte fondo ${fund.alias}`,
+        relatedEntityId: contributionId.toString(),
+      }, session);
+
+      return fund.save({ session });
+    });
+
     const fund = await this.findByIdAndUser(id, userId);
 
     if (fund.status !== 'active') {
@@ -111,6 +223,12 @@ export class FundsService {
     if (!data.amountCents || data.amountCents <= 0) {
       throw new BadRequestException('El monto del aporte debe ser mayor a 0');
     }
+    if (!data.accountId) {
+      throw new BadRequestException('La cuenta origen del aporte es requerida');
+    }
+
+    await this.accountsService.findByIdAndUser(data.accountId, userId);
+    await this.accountsService.decreaseBalance(data.accountId, data.amountCents);
 
     const contribution: any = {
       amountCents: data.amountCents,
@@ -146,11 +264,46 @@ export class FundsService {
    * Delete a contribution
    */
   async deleteContribution(id: string, userId: string, contributionId: string) {
+    return this.connection.transaction(async (session) => {
+      const fund = await this.findByIdAndUser(id, userId, session);
+
+      const contribution = fund.contributions.find(
+        (c) => c._id.toString() === contributionId,
+      );
+      if (!contribution) {
+        throw new NotFoundException('Aporte no encontrado');
+      }
+
+      fund.currentAmountCents = Math.max(0, fund.currentAmountCents - contribution.amountCents);
+      if (fund.status === 'matured' && fund.currentAmountCents < fund.targetAmountCents) {
+        fund.status = 'active';
+      }
+
+      if (contribution.accountId) {
+        await this.accountsService.increaseBalance(
+          contribution.accountId.toString(),
+          contribution.amountCents,
+          session,
+        );
+      }
+
+      await this.movementsService.deleteMovementRecordsByRelatedEntity(
+        userId,
+        contributionId,
+        session,
+      );
+      fund.contributions = fund.contributions.filter(
+        (c) => c._id.toString() !== contributionId,
+      );
+
+      return fund.save({ session });
+    });
+
     const fund = await this.findByIdAndUser(id, userId);
 
     const contribution = fund.contributions.find(
       (c) => c._id.toString() === contributionId,
-    );
+    )!;
     if (!contribution) {
       throw new NotFoundException('Aporte no encontrado');
     }
@@ -161,6 +314,13 @@ export class FundsService {
     // Re-activar si estaba maduro
     if (fund.status === 'matured' && fund.currentAmountCents < fund.targetAmountCents) {
       fund.status = 'active';
+    }
+
+    if (contribution.accountId) {
+      await this.accountsService.increaseBalance(
+        contribution.accountId!.toString(),
+        contribution.amountCents,
+      );
     }
 
     fund.contributions = fund.contributions.filter(

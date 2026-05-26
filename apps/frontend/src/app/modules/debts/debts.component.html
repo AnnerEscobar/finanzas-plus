@@ -3,7 +3,31 @@
 <div class="p-6 bg-gray-50 min-h-screen">
   <!-- Header -->
   <div class="flex justify-between items-center mb-6">
-    <h1 class="text-3xl font-bold text-gray-900">Deudas</h1>
+    <div class="flex items-center gap-3">
+      <h1 class="text-3xl font-bold text-gray-900">Deudas</h1>
+      <div class="inline-flex rounded-lg border border-gray-200 bg-white p-1">
+        <button
+          type="button"
+          (click)="setDebtStatusFilter('active')"
+          class="px-3 py-1.5 text-sm rounded-md transition"
+          [class.bg-blue-600]="debtStatusFilter === 'active'"
+          [class.text-white]="debtStatusFilter === 'active'"
+          [class.text-gray-600]="debtStatusFilter !== 'active'"
+        >
+          Activas
+        </button>
+        <button
+          type="button"
+          (click)="setDebtStatusFilter('paid')"
+          class="px-3 py-1.5 text-sm rounded-md transition"
+          [class.bg-blue-600]="debtStatusFilter === 'paid'"
+          [class.text-white]="debtStatusFilter === 'paid'"
+          [class.text-gray-600]="debtStatusFilter !== 'paid'"
+        >
+          Pagadas
+        </button>
+      </div>
+    </div>
     <button
       (click)="openAddDebtDialog()"
       class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition"
@@ -58,8 +82,11 @@
 
   <!-- Empty State -->
   <div *ngIf="!loading && debts.length === 0" class="bg-white rounded-lg shadow p-12 text-center">
-    <p class="text-gray-500 text-lg mb-4">No hay deudas registradas</p>
+    <p class="text-gray-500 text-lg mb-4">
+      {{ debtStatusFilter === 'paid' ? 'No hay deudas pagadas' : 'No hay deudas registradas' }}
+    </p>
     <button
+      *ngIf="debtStatusFilter === 'active'"
       (click)="openAddDebtDialog()"
       class="bg-blue-600 text-white px-6 py-2 rounded-lg"
     >
@@ -471,9 +498,9 @@
         </div>
 
         <div>
-          <label class="block text-sm font-medium mb-1">Cuenta de Pago</label>
+          <label class="block text-sm font-medium mb-1">Cuenta de Pago *</label>
           <select formControlName="accountId" class="w-full px-3 py-2 border rounded">
-            <option value="">Sin especificar</option>
+            <option value="">Selecciona una cuenta</option>
             <option *ngFor="let account of accounts" [value]="account._id">
               {{ account.alias }}
             </option>

@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
+import { ClientSession, Connection, Model, Types } from 'mongoose';
 import { CreditCard, CreditCardCorte, Charge, ExtraFinanciamiento } from './schemas/creditCard.schema';
 import { AccountsService } from '../accounts/accounts.service';
 import { MovementsService } from '../movements/movements.service';
@@ -11,6 +11,7 @@ export class CreditCardsService {
     @InjectModel(CreditCard.name) private creditCardModel: Model<CreditCard>,
     private accountsService: AccountsService,
     private movementsService: MovementsService,
+    @InjectConnection() private connection: Connection,
   ) {}
 
   /**
@@ -123,8 +124,8 @@ export class CreditCardsService {
     return this.creditCardModel.findById(id);
   }
 
-  async findByIdAndUser(id: string, userId: string) {
-    const card = await this.creditCardModel.findOne({ _id: id, userId });
+  async findByIdAndUser(id: string, userId: string, session?: ClientSession) {
+    const card = await this.creditCardModel.findOne({ _id: id, userId }).session(session || null);
     if (!card) {
       throw new NotFoundException('Tarjeta de crédito no encontrada');
     }
@@ -145,6 +146,16 @@ export class CreditCardsService {
   }
 
   async deleteCard(id: string) {
+    const existing = await this.findById(id);
+    if (!existing) {
+      throw new NotFoundException('Tarjeta de crÃ©dito no encontrada');
+    }
+    if (existing.totalBalanceCents > 0) {
+      throw new BadRequestException(
+        'No se puede eliminar una tarjeta con saldo pendiente. Primero paga o ajusta sus cortes.',
+      );
+    }
+
     const card = await this.creditCardModel.findByIdAndUpdate(
       id,
       { isActive: false },
@@ -203,7 +214,7 @@ export class CreditCardsService {
     }
 
     if (!data.categoryId) {
-      throw new BadRequestException('La categoría es obligatoria para los cargos');
+      throw new BadRequestException('La categoria es obligatoria para los cargos');
     }
     if (!data.amountCents || data.amountCents <= 0) {
       throw new BadRequestException('El monto debe ser mayor a 0');
@@ -224,7 +235,6 @@ export class CreditCardsService {
 
     return card.save();
   }
-
   async getCorteCharges(userId: string, cardId: string, corteId: string) {
     const card = await this.findByIdAndUser(cardId, userId);
     const corte = card.statementCycles.find((c) => c._id.toString() === corteId);
@@ -268,32 +278,13 @@ export class CreditCardsService {
    * Pago manual al corte (parcial o total) - método legacy
    */
   async recordPayment(userId: string, cardId: string, data: any) {
-    const card = await this.findByIdAndUser(cardId, userId);
-
-    const corte = card.statementCycles.find((c) => c._id.toString() === data.corteId);
-    if (!corte) {
-      throw new NotFoundException('Corte de estado no encontrado');
-    }
-
-    if (corte.status === 'paid') {
-      throw new BadRequestException('Este corte ya está completamente pagado');
-    }
-
-    const payment: any = {
-      amountCents: data.amountCents,
-      date: data.date ? new Date(data.date) : new Date(),
+    return this.abonarCorte(userId, cardId, data.corteId, {
       accountId: data.accountId,
-      note: data.note || '',
-      createdAt: new Date(),
-    };
-
-    corte.payments.push(payment);
-    this.recalculateCorteTotals(corte);
-    this.recalculateCardTotals(card);
-
-    return card.save();
+      amountCents: data.amountCents,
+      date: data.date,
+      note: data.note || 'Abono parcial',
+    });
   }
-
   async getCortePayments(userId: string, cardId: string, corteId: string) {
     const card = await this.findByIdAndUser(cardId, userId);
     const corte = card.statementCycles.find((c) => c._id.toString() === corteId);
@@ -339,8 +330,7 @@ export class CreditCardsService {
 
   /**
    * Crear extrafinanciamiento (compra a cuotas)
-   * Si el corte abierto aún NO contiene una cuota de este extrafinanciamiento,
-   * se aplica la primera cuota inmediatamente.
+   * Las cuotas se aplican al abrir el siguiente corte después del día de corte.
    */
   async createExtraFinanciamiento(userId: string, cardId: string, data: any) {
     const card = await this.findByIdAndUser(cardId, userId);
@@ -358,7 +348,10 @@ export class CreditCardsService {
       throw new BadRequestException('Categoría es requerida');
     }
 
-    const monthlyAmountCents = Math.round(data.totalAmountCents / data.totalInstallments);
+    const monthlyAmountCents = Math.floor(data.totalAmountCents / data.totalInstallments);
+    if (monthlyAmountCents <= 0) {
+      throw new BadRequestException('El monto total no alcanza para dividirse en esa cantidad de cuotas');
+    }
 
     // Cuotas ya pagadas antes de este registro (compras en curso)
     const paidInstallments = Math.max(0, Math.min(
@@ -387,14 +380,6 @@ export class CreditCardsService {
 
     card.extraFinancings.push(ef);
 
-    // Aplicar la SIGUIENTE cuota (paidInstallments + 1) al corte abierto actual
-    const openCorte = card.statementCycles.find((c) => c.status === 'open');
-    if (openCorte) {
-      const newEf = card.extraFinancings[card.extraFinancings.length - 1];
-      const nextInstallment = paidInstallments + 1;
-      this.applyExtraFinancingCuota(card, openCorte, newEf, nextInstallment);
-    }
-
     this.recalculateCardTotals(card);
     return card.save();
   }
@@ -410,8 +395,11 @@ export class CreditCardsService {
   ) {
     const charge: any = {
       description: `Cuota ${installmentNumber}/${ef.totalInstallments} - ${ef.description}`,
-      amountCents: ef.monthlyAmountCents,
-      date: new Date(),
+      amountCents:
+        installmentNumber >= ef.totalInstallments
+          ? ef.totalAmountCents - ef.monthlyAmountCents * (ef.totalInstallments - 1)
+          : ef.monthlyAmountCents,
+      date: corte.openingDate ? new Date(corte.openingDate) : new Date(),
       categoryId: ef.categoryId,
       extraFinancingId: ef._id,
       installmentNumber,
@@ -424,12 +412,8 @@ export class CreditCardsService {
     ef.lastAppliedCorteId = corte._id;
     this.recalculateCorteTotals(corte);
 
-    // Si esta es la última cuota, marcar completado SOLO si no hay cuotas
-    // pendientes de pago en cortes closed_unpaid (evita marcar completado prematuramente
-    // cuando hay meses anteriores sin pagar con cuotas de este EF).
-    if (installmentNumber >= ef.totalInstallments && this.isEFCompleted(card, ef)) {
-      ef.status = 'completed';
-    }
+    // Programar una cuota no significa que ya fue pagada. El estado se actualiza
+    // al pagar el corte, cuando paidInstallments refleja pagos reales.
   }
 
   /**
@@ -576,26 +560,7 @@ export class CreditCardsService {
    * Esto evita marcar completado cuando aún hay cuotas pendientes de pago en meses anteriores.
    */
   private isEFCompleted(card: any, ef: any): boolean {
-    const efId = ef._id.toString();
-
-    // Verificar si alguna cuota con número final está aplicada
-    const lastInstallmentApplied = card.statementCycles.some((c: any) =>
-      (c.charges || []).some(
-        (ch: any) =>
-          ch.extraFinancingId?.toString() === efId &&
-          (ch.installmentNumber ?? 0) >= ef.totalInstallments,
-      ),
-    );
-    if (!lastInstallmentApplied) return false;
-
-    // Verificar que no haya cuotas pendientes de pago en cortes cerrados
-    const hasPendingInClosedUnpaid = card.statementCycles
-      .filter((c: any) => c.status === 'closed_unpaid')
-      .some((c: any) =>
-        (c.charges || []).some((ch: any) => ch.extraFinancingId?.toString() === efId),
-      );
-
-    return !hasPendingInClosedUnpaid;
+    return ef.paidInstallments >= ef.totalInstallments;
   }
 
   /**
@@ -626,75 +591,65 @@ export class CreditCardsService {
    */
   async repairOpenCorteInstallments(userId: string, cardId: string) {
     const card = await this.findByIdAndUser(cardId, userId);
+    const unpaidCortes = [...card.statementCycles]
+      .filter((c: any) => c.status === 'closed_unpaid' || c.status === 'open')
+      .sort((a: any, b: any) => new Date(a.closingDate).getTime() - new Date(b.closingDate).getTime());
 
-    const openCorte = card.statementCycles.find((c) => c.status === 'open');
-    if (!openCorte) {
-      throw new BadRequestException('No hay corte abierto para reparar');
+    if (unpaidCortes.length === 0) {
+      throw new BadRequestException('No hay cortes no pagados para reparar');
     }
 
-    // PASO 1: Corregir EFs marcados prematuramente como 'completed'.
-    // Un EF 'completed' con cuotas pendientes en cortes closed_unpaid debe volver a 'active'.
+    const repairs: any[] = [];
     for (const ef of card.extraFinancings) {
-      if (ef.status !== 'completed') continue;
-      if (ef.paidInstallments >= ef.totalInstallments) continue; // Realmente pagado
-
       const efId = ef._id.toString();
-      const hasPendingInClosedUnpaid = card.statementCycles
-        .filter((c: any) => c.status === 'closed_unpaid')
-        .some((c: any) =>
-          (c.charges || []).some((ch: any) => ch.extraFinancingId?.toString() === efId),
+      const before = unpaidCortes.flatMap((c: any) =>
+        (c.charges || [])
+          .filter((ch: any) => ch.extraFinancingId?.toString() === efId)
+          .map((ch: any) => ({
+            corteNumber: c.cycleNumber,
+            installmentNumber: ch.installmentNumber,
+          })),
+      );
+
+      for (const corte of unpaidCortes) {
+        (corte as any).charges = (corte as any).charges.filter(
+          (ch: any) => ch.extraFinancingId?.toString() !== efId,
         );
-
-      if (hasPendingInClosedUnpaid) {
-        ef.status = 'active'; // Reactivar: aún hay cuotas sin pagar en meses anteriores
-      }
-    }
-
-    // PASO 2: Reparar cuotas del corte abierto para cada EF activo
-    for (const ef of card.extraFinancings) {
-      if (ef.status !== 'active') continue;
-
-      const efId = ef._id.toString();
-
-      // Verificar si la última cuota ya está en CUALQUIER corte (abierto o cerrado)
-      const lastInstallmentExists = card.statementCycles.some((corte: any) =>
-        (corte.charges || []).some(
-          (ch: any) =>
-            ch.extraFinancingId?.toString() === efId &&
-            (ch.installmentNumber ?? 0) >= ef.totalInstallments,
-        ),
-      );
-
-      if (lastInstallmentExists) {
-        // La última cuota ya está programada.
-        // Marcar completado solo si no hay cuotas pendientes en closed_unpaid.
-        if (this.isEFCompleted(card, ef)) {
-          ef.status = 'completed';
-        }
-        continue;
+        this.recalculateCorteTotals(corte);
       }
 
-      // Calcular cuota correcta usando fuente de verdad (no installmentNumber)
-      const nextInstallmentNumber = this.getNextInstallmentForOpenCorte(card, ef);
-
-      if (nextInstallmentNumber > ef.totalInstallments) {
-        // Todas las cuotas ya están en cortes cerrados; no agregar nueva.
-        // No marcar completed: puede haber closed_unpaid pendientes.
-        continue;
+      let nextInstallment = (ef.paidInstallments || 0) + 1;
+      const after: any[] = [];
+      for (const corte of unpaidCortes) {
+        if (nextInstallment > ef.totalInstallments) break;
+        this.applyExtraFinancingCuota(card, corte, ef, nextInstallment);
+        after.push({ corteNumber: corte.cycleNumber, installmentNumber: nextInstallment });
+        nextInstallment++;
       }
 
-      // Reemplazar el cargo incorrecto en el corte abierto con el número correcto
-      (openCorte as any).charges = (openCorte as any).charges.filter(
-        (ch: any) => ch.extraFinancingId?.toString() !== efId,
-      );
-      this.applyExtraFinancingCuota(card, openCorte, ef, nextInstallmentNumber);
+      ef.status = ef.paidInstallments >= ef.totalInstallments ? 'completed' : 'active';
+      repairs.push({
+        extraFinancingId: efId,
+        description: ef.description,
+        before,
+        after,
+        status: ef.status,
+      });
     }
 
     card.markModified('extraFinancings');
     card.markModified('statementCycles');
-    this.recalculateCorteTotals(openCorte);
+    for (const corte of unpaidCortes) {
+      this.recalculateCorteTotals(corte);
+    }
     this.recalculateCardTotals(card);
-    return card.save();
+    await card.save();
+
+    return {
+      message: 'Cuotas de extrafinanciamientos reparadas en cortes no pagados',
+      repairs,
+      card,
+    };
   }
 
   // ==========================================================================
@@ -709,7 +664,8 @@ export class CreditCardsService {
    * - NO genera movimientos de gasto (eso ocurre al pagar el corte completo)
    */
   async abonarCorte(userId: string, cardId: string, corteId: string, data: any) {
-    const card = await this.findByIdAndUser(cardId, userId);
+    return this.connection.transaction(async (session) => {
+    const card = await this.findByIdAndUser(cardId, userId, session);
 
     const corte = card.statementCycles.find((c) => c._id.toString() === corteId);
     if (!corte) {
@@ -733,7 +689,7 @@ export class CreditCardsService {
     }
 
     // Validar cuenta y saldo disponible
-    const account = await this.accountsService.findByIdAndUser(data.accountId, userId);
+    const account = await this.accountsService.findByIdAndUser(data.accountId, userId, session);
     if (account.currentBalanceCents < amountCents) {
       throw new BadRequestException(
         `Saldo insuficiente en "${account.alias}". Disponible: Q${(account.currentBalanceCents / 100).toFixed(2)}`,
@@ -741,7 +697,7 @@ export class CreditCardsService {
     }
 
     // Descontar de la cuenta
-    await this.accountsService.decreaseBalance(data.accountId, amountCents);
+    await this.accountsService.decreaseBalance(data.accountId, amountCents, session);
 
     // Registrar el abono en el corte
     const payment: any = {
@@ -756,7 +712,8 @@ export class CreditCardsService {
     this.recalculateCorteTotals(corte);
     this.recalculateCardTotals(card);
 
-    return card.save();
+    return card.save({ session });
+    });
   }
 
   // ==========================================================================
@@ -771,7 +728,8 @@ export class CreditCardsService {
    * 4. Incrementa paidInstallments en cada extrafinanciamiento que tenía cuota
    */
   async payCorte(userId: string, cardId: string, corteId: string, accountId: string) {
-    const card = await this.findByIdAndUser(cardId, userId);
+    return this.connection.transaction(async (session) => {
+    const card = await this.findByIdAndUser(cardId, userId, session);
 
     const corte = card.statementCycles.find((c) => c._id.toString() === corteId);
     if (!corte) {
@@ -781,13 +739,17 @@ export class CreditCardsService {
       throw new BadRequestException('Este corte ya está pagado');
     }
 
+    if (corte.status === 'open') {
+      throw new BadRequestException('No se puede pagar un corte abierto. Cierra el corte primero.');
+    }
+
     const remainingCents = corte.balanceCents;
     if (remainingCents <= 0) {
       throw new BadRequestException('No hay saldo a pagar en este corte');
     }
 
     // Validar cuenta y saldo
-    const account = await this.accountsService.findByIdAndUser(accountId, userId);
+    const account = await this.accountsService.findByIdAndUser(accountId, userId, session);
     if (account.currentBalanceCents < remainingCents) {
       throw new BadRequestException(
         `Saldo insuficiente en ${account.alias}. Disponible: Q${(account.currentBalanceCents / 100).toFixed(2)}`,
@@ -802,30 +764,26 @@ export class CreditCardsService {
     }
 
     // Si había pagos parciales previos, distribuir proporcionalmente al saldo real
-    const totalCharges = corte.chargesTotal;
-    const ratio = totalCharges > 0 ? remainingCents / totalCharges : 1;
-
     const payDate = new Date();
     const noteBase = `Pago tarjeta ${card.alias} - Corte #${corte.cycleNumber}`;
 
     // 2. Crear UN movimiento de gasto por categoría (sin tocar el saldo aquí)
     for (const [categoryId, amount] of categoryGroups.entries()) {
-      const adjustedAmount = Math.round(amount * ratio);
-      if (adjustedAmount > 0) {
+      if (amount > 0) {
         await this.movementsService.createMovementRecord(userId, {
           type: 'expense',
-          amountCents: adjustedAmount,
+          amountCents: amount,
           date: payDate,
           accountId,
           categoryId,
           paymentMethod: 'debit',
           note: noteBase,
-        });
+        }, session);
       }
     }
 
     // 3. UN solo descuento de saldo por el total del corte
-    await this.accountsService.decreaseBalance(accountId, remainingCents);
+    await this.accountsService.decreaseBalance(accountId, remainingCents, session);
 
     // 3. Registrar pago
     const payment: any = {
@@ -872,7 +830,8 @@ export class CreditCardsService {
     this.recalculateCorteTotals(corte);
     this.recalculateCardTotals(card);
 
-    return card.save();
+    return card.save({ session });
+    });
   }
 
   /**

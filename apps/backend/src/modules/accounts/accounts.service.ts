@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { ClientSession, Model } from 'mongoose';
 import { Account } from './schemas/account.schema';
 
 @Injectable()
@@ -41,8 +41,8 @@ export class AccountsService {
   /**
    * Find account by ID with user validation
    */
-  async findByIdAndUser(id: string, userId: string) {
-    const account = await this.accountModel.findOne({ _id: id, userId });
+  async findByIdAndUser(id: string, userId: string, session?: ClientSession) {
+    const account = await this.accountModel.findOne({ _id: id, userId }).session(session || null);
     if (!account) {
       throw new NotFoundException('Cuenta no encontrada');
     }
@@ -93,29 +93,37 @@ export class AccountsService {
   /**
    * Aumenta el saldo de una cuenta (RB-05: Ingresos)
    */
-  async increaseBalance(accountId: string, amountCents: number): Promise<Account> {
+  async increaseBalance(
+    accountId: string,
+    amountCents: number,
+    session?: ClientSession,
+  ): Promise<Account> {
     if (amountCents <= 0) {
       throw new BadRequestException('El monto debe ser positivo');
     }
 
-    const account = await this.findById(accountId);
+    const account = await this.accountModel.findById(accountId).session(session || null);
     if (!account) {
       throw new BadRequestException('Cuenta no encontrada');
     }
 
     account.currentBalanceCents += amountCents;
-    return account.save();
+    return account.save({ session });
   }
 
   /**
    * Reduce el saldo de una cuenta (RB-06: Gastos)
    */
-  async decreaseBalance(accountId: string, amountCents: number): Promise<Account> {
+  async decreaseBalance(
+    accountId: string,
+    amountCents: number,
+    session?: ClientSession,
+  ): Promise<Account> {
     if (amountCents <= 0) {
       throw new BadRequestException('El monto debe ser positivo');
     }
 
-    const account = await this.findById(accountId);
+    const account = await this.accountModel.findById(accountId).session(session || null);
     if (!account) {
       throw new BadRequestException('Cuenta no encontrada');
     }
@@ -127,7 +135,7 @@ export class AccountsService {
     }
 
     account.currentBalanceCents -= amountCents;
-    return account.save();
+    return account.save({ session });
   }
 
   /**

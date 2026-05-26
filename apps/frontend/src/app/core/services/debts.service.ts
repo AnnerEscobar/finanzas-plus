@@ -73,8 +73,8 @@ export class DebtsService {
   /**
    * Get all debts with summary
    */
-  getDebts(): Observable<{ debts: Debt[]; summary: DebtSummary }> {
-    return this.apiService.get('debts');
+  getDebts(status: 'active' | 'paid' | 'all' = 'active'): Observable<{ debts: Debt[]; summary: DebtSummary }> {
+    return this.apiService.get('debts', { status });
   }
 
   /**
